@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1 (2026-08-17)
+
+### 新增
+- **多 AI 提供方支持**：设置界面新增「AI 提供方」下拉，支持 SiliconFlow / OpenCode Zen / OpenCode Go
+  - OpenCode Zen：`https://opencode.ai/zen/v1`，推荐模型 deepseek-v4-flash / claude-haiku-4-5 / gemini-3.5-flash 等
+  - OpenCode Go：`https://opencode.ai/zen/go/v1`，推荐模型 glm-5.2 / kimi-k3 / qwen3.7-plus 等
+  - 切换提供方自动刷新模型下拉；AI 审查与决策解析自动使用所选提供方
+
 ## v0.2.0 (2026-08-17)
 
 ### 新增
