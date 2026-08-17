@@ -17,14 +17,88 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _DEFAULT_MODEL: str = "deepseek-ai/DeepSeek-V4-Flash"
 # SiliconFlow OpenAI 兼容接口地址
 DEFAULT_BASE_URL: str = "https://api.siliconflow.cn/v1"
+# OpenCode Zen / Go 的 OpenAI 兼容接口地址
+OPENCODE_ZEN_BASE_URL: str = "https://opencode.ai/zen/v1"
+OPENCODE_GO_BASE_URL: str = "https://opencode.ai/zen/go/v1"
+
+# 支持的 AI 提供方
+PROVIDER_SILICONFLOW: str = "siliconflow"
+PROVIDER_OPENCODE_ZEN: str = "opencode_zen"
+PROVIDER_OPENCODE_GO: str = "opencode_go"
+
+# 各提供方对应的 base URL
+PROVIDER_BASE_URLS: dict[str, str] = {
+    PROVIDER_SILICONFLOW: DEFAULT_BASE_URL,
+    PROVIDER_OPENCODE_ZEN: OPENCODE_ZEN_BASE_URL,
+    PROVIDER_OPENCODE_GO: OPENCODE_GO_BASE_URL,
+}
+
+# 各提供方推荐的模型（供设置界面下拉选择）
+PROVIDER_MODELS: dict[str, tuple[str, ...]] = {
+    PROVIDER_SILICONFLOW: (
+        "deepseek-ai/DeepSeek-V4-Flash",
+        "deepseek-ai/DeepSeek-V3",
+        "deepseek-ai/DeepSeek-V2.5",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "THUDM/GLM-4-Plus",
+        "01-ai/Yi-1.5-34B-Chat",
+    ),
+    PROVIDER_OPENCODE_ZEN: (
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "gpt-5.6-luna",
+        "gpt-5.4-mini",
+        "claude-haiku-4-5",
+        "gemini-3.5-flash",
+        "qwen3.7-plus",
+        "kimi-k2.7-code",
+        "glm-5.2",
+        "grok-4.5",
+    ),
+    PROVIDER_OPENCODE_GO: (
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "gpt-5.6-luna",
+        "glm-5.3",
+        "glm-5.2",
+        "kimi-k3",
+        "kimi-k2.7-code",
+        "qwen3.7-plus",
+        "mimo-v2.5",
+        "hy3",
+    ),
+}
+
+# 各提供方的默认模型
+PROVIDER_DEFAULT_MODELS: dict[str, str] = {
+    PROVIDER_SILICONFLOW: "deepseek-ai/DeepSeek-V4-Flash",
+    PROVIDER_OPENCODE_ZEN: "deepseek-v4-flash",
+    PROVIDER_OPENCODE_GO: "deepseek-v4-flash",
+}
+
+
+def provider_base_url(provider: str) -> str:
+    """返回提供方对应的 base URL；未知提供方回退 SiliconFlow。"""
+    return PROVIDER_BASE_URLS.get(provider, DEFAULT_BASE_URL)
+
+
+def provider_models(provider: str) -> tuple[str, ...]:
+    """返回提供方推荐的模型列表；未知提供方回退 SiliconFlow 列表。"""
+    return PROVIDER_MODELS.get(provider, PROVIDER_MODELS[PROVIDER_SILICONFLOW])
+
+
+def provider_default_model(provider: str) -> str:
+    """返回提供方的默认模型；未知提供方回退 SiliconFlow 默认。"""
+    return PROVIDER_DEFAULT_MODELS.get(provider, _DEFAULT_MODEL)
 
 
 class Config(BaseSettings):
     """DiffGuard 应用配置模型。
 
     属性:
-        api_key: SiliconFlow 平台 API Key。
+        api_key: AI 提供方的 API Key。
         model: 使用的模型名称。
+        provider: AI 提供方（siliconflow / opencode_zen / opencode_go）。
         auto_clipboard: 是否自动监听剪贴板中的 git diff。
         permission_monitor: 是否启用权限审批监控（UIA 主通道 + 剪贴板辅助）。
         floating_mode_enabled: 权限审批浮窗是否置顶显示。
@@ -46,6 +120,7 @@ class Config(BaseSettings):
 
     api_key: str = ""
     model: str = _DEFAULT_MODEL
+    provider: str = PROVIDER_SILICONFLOW
     auto_clipboard: bool = True
     permission_monitor: bool = True
     floating_mode_enabled: bool = True

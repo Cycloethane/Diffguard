@@ -27,7 +27,7 @@ from openai import (
 )
 
 from core.decision_parser import parse
-from models.config import DEFAULT_BASE_URL, Config
+from models.config import Config, provider_base_url
 from models.decision_prompt import DecisionLevel, DecisionPrompt
 
 # 三档措辞风格说明（注入系统提示词）
@@ -74,8 +74,6 @@ _SYSTEM_PROMPT_TEMPLATE: str = """你是一位耐心的「决策解说员」，�
 - 解释要具体，结合选项本身内容，不要泛泛而谈。
 """
 
-# 硅基流动 OpenAI 兼容接口
-_BASE_URL: str = DEFAULT_BASE_URL
 # 单次解析的原始文本长度上限
 _MAX_PROMPT_LEN: int = 4000
 
@@ -106,7 +104,8 @@ def explain_decision(prompt: DecisionPrompt, config: Config) -> Iterator[str]:
         yield "#ERROR# 尚未配置 API Key，请在“设置”中填写后重试。"
         return
 
-    client: OpenAI = OpenAI(api_key=config.api_key, base_url=_BASE_URL)
+    base_url: str = provider_base_url(getattr(config, "provider", ""))
+    client: OpenAI = OpenAI(api_key=config.api_key, base_url=base_url)
     level: str = getattr(config, "decision_level", DecisionLevel.NORMAL.value)
     try:
         logger.info("开始调用模型 {} 解析决策: {}", config.model, prompt.question[:60])

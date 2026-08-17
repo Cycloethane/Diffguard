@@ -18,7 +18,7 @@ from openai import (
     RateLimitError,
 )
 
-from models.config import DEFAULT_BASE_URL, Config
+from models.config import Config, provider_base_url
 
 SYSTEM_PROMPT: str = """
 你是一位资深代码审查专家。请分析以下 git diff，提供中文结构化审查报告。
@@ -55,10 +55,6 @@ SYSTEM_PROMPT: str = """
 列出必须确认的问题。
 """
 
-# 硅基流动平台的 OpenAI 兼容接口地址
-_BASE_URL: str = DEFAULT_BASE_URL
-
-
 def _build_user_prompt(diff_text: str) -> str:
     """构造用户提示词：包含待审查的 diff 全文。"""
     return f"请审查以下 git diff：\n\n{diff_text}"
@@ -75,10 +71,11 @@ def analyze_diff(diff_text: str, config: Config) -> Iterator[str]:
         yield "\n\n[错误] 尚未配置 API Key，请在“设置”中填写后重试。\n"
         return
 
-    client: OpenAI = OpenAI(api_key=config.api_key, base_url=_BASE_URL)
+    base_url: str = provider_base_url(getattr(config, "provider", ""))
+    client: OpenAI = OpenAI(api_key=config.api_key, base_url=base_url)
 
     try:
-        logger.info("开始调用模型 {} 审查 diff", config.model)
+        logger.info("开始调用模型 {} 审查 diff（提供方 {}）", config.model, getattr(config, "provider", "siliconflow"))
         response: Any = client.chat.completions.create(
             model=config.model,
             temperature=0.2,

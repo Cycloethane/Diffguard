@@ -10,7 +10,16 @@ from typing import Any, Callable, Optional
 import customtkinter as ctk
 from loguru import logger
 
-from models.config import Config, load_config, save_config
+from models.config import (
+    Config,
+    PROVIDER_OPENCODE_GO,
+    PROVIDER_OPENCODE_ZEN,
+    PROVIDER_SILICONFLOW,
+    load_config,
+    provider_default_model,
+    provider_models,
+    save_config,
+)
 from models.decision_prompt import DecisionMode
 from ui.theme import accent_names
 
@@ -44,15 +53,17 @@ def _apply_window_icon(window: Any) -> None:
             except Exception:
                 continue
 
-# 常见可用模型选项（SiliconFlow 平台）
-_MODEL_OPTIONS: tuple[str, ...] = (
-    "deepseek-ai/DeepSeek-V4-Flash",
-    "deepseek-ai/DeepSeek-V3",
-    "deepseek-ai/DeepSeek-V2.5",
-    "Qwen/Qwen2.5-72B-Instruct",
-    "THUDM/GLM-4-Plus",
-    "01-ai/Yi-1.5-34B-Chat",
+# AI 提供方选项
+_PROVIDER_OPTIONS: tuple[str, ...] = (
+    PROVIDER_SILICONFLOW,
+    PROVIDER_OPENCODE_ZEN,
+    PROVIDER_OPENCODE_GO,
 )
+_PROVIDER_LABELS: dict[str, str] = {
+    PROVIDER_SILICONFLOW: "SiliconFlow (硅基流动)",
+    PROVIDER_OPENCODE_ZEN: "OpenCode Zen",
+    PROVIDER_OPENCODE_GO: "OpenCode Go",
+}
 
 _THEME_OPTIONS: tuple[str, ...] = ("dark", "light")
 
@@ -130,12 +141,24 @@ class SettingsDialog(ctk.CTkToplevel):
         ).grid(row=r, column=0, sticky="ew", pady=(4, 2))
         r += 1
 
-        ctk.CTkLabel(scroll, text="API Key (SiliconFlow)", anchor="w").grid(
+        ctk.CTkLabel(scroll, text="AI 提供方", anchor="w").grid(
+            row=r, column=0, sticky="ew", pady=(4, 2)
+        )
+        r += 1
+        self.provider_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
+            scroll,
+            values=[_PROVIDER_LABELS[p] for p in _PROVIDER_OPTIONS],
+            command=self._on_provider_changed,
+        )
+        self.provider_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        ctk.CTkLabel(scroll, text="API Key", anchor="w").grid(
             row=r, column=0, sticky="ew", pady=(4, 2)
         )
         r += 1
         self.api_key_entry: ctk.CTkEntry = ctk.CTkEntry(
-            scroll, show="*", placeholder_text="sk-..."
+            scroll, show="*", placeholder_text="sk-... (SiliconFlow / OpenCode Zen / OpenCode Go)"
         )
         self.api_key_entry.grid(row=r, column=0, sticky="ew", pady=(0, 6))
         r += 1
@@ -145,7 +168,7 @@ class SettingsDialog(ctk.CTkToplevel):
         )
         r += 1
         self.model_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
-            scroll, values=list(_MODEL_OPTIONS)
+            scroll, values=list(provider_models(PROVIDER_SILICONFLOW))
         )
         self.model_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
         r += 1
@@ -316,13 +339,36 @@ class SettingsDialog(ctk.CTkToplevel):
         self.save_button.grid(row=r, column=0, pady=16, sticky="ew")
         r += 1
 
+    def _current_provider(self) -> str:
+        """从下拉框读取当前选择的提供方标识。"""
+        label: str = self.provider_option.get()
+        return next((k for k, v in _PROVIDER_LABELS.items() if v == label), PROVIDER_SILICONFLOW)
+
+    def _apply_provider_models(self, provider: str, preferred: str = "") -> None:
+        """按提供方刷新模型下拉框；preferred 指定优先选中的模型。"""
+        models: tuple[str, ...] = provider_models(provider)
+        if preferred in models:
+            current: str = preferred
+        else:
+            current = provider_default_model(provider)
+        self.model_option.configure(values=list(models))
+        self.model_option.set(current)
+
+    def _on_provider_changed(self, _label: str) -> None:
+        """用户切换提供方：更新模型下拉框。"""
+        provider: str = self._current_provider()
+        self._apply_provider_models(provider)
+
     def _load_values(self) -> None:
         """将当前配置填充到控件中。"""
         self.api_key_entry.delete(0, "end")
         self.api_key_entry.insert(0, self._config.api_key)
-        self.model_option.set(
-            self._config.model if self._config.model in _MODEL_OPTIONS else _MODEL_OPTIONS[0]
-        )
+        provider: str = getattr(self._config, "provider", PROVIDER_SILICONFLOW)
+        if provider not in _PROVIDER_OPTIONS:
+            provider = PROVIDER_SILICONFLOW
+        self.provider_option.set(_PROVIDER_LABELS[provider])
+        # 加载时保留已保存的模型（若属于该提供方列表）
+        self._apply_provider_models(provider, preferred=self._config.model)
         self.theme_option.set(
             self._config.theme if self._config.theme in _THEME_OPTIONS else "dark"
         )
@@ -384,6 +430,7 @@ class SettingsDialog(ctk.CTkToplevel):
         cfg = Config(
             api_key=self.api_key_entry.get().strip(),
             model=self.model_option.get(),
+            provider=self._current_provider(),
             auto_clipboard=bool(self.auto_clipboard_switch.get()),
             permission_monitor=bool(self.permission_monitor_switch.get()),
             floating_mode_enabled=bool(self.floating_mode_switch.get()),
