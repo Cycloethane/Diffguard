@@ -1,0 +1,12 @@
+customtkinter>=5.2.2
+unidiff>=0.7.5
+pyperclip>=1.8.2
+pydantic-settings>=2.2.0
+platformdirs>=4.0.0
+SQLModel>=0.0.16
+openai>=1.30.0
+loguru>=0.7.2
+Pygments>=2.17.2
+uiautomation>=2.0.17
+comtypes>=1.2.0
+pywin32>=306

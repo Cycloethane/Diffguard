@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "diffguard": {
+      "type": "stdio",
+      "command": ["python", "-m", "bridge.mcp_server"],
+      "cwd": "<YOUR_DIFFGUARD_SOURCE_DIR>"
+    }
+  }
+}

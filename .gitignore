@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# 环境
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+
+# 工具/IDE
+.idea/
+.vscode/
+*.swp
+*.sln
+*.suo
+
+# 测试与覆盖率
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# DiffGuard 运行时数据（本地生成，不入库）
+*.log
+Logs/
+
+# 打包产物
+*.spec.bak
+DiffGuardSetup-*.exe
+DiffGuard便携版-*.7z
+
+# 用户本地配置
+*.local
+config.local.json

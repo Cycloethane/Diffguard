@@ -1,0 +1,543 @@
+# -*- coding: utf-8 -*-
+"""设置弹窗：API Key、模型、监听开关、主题、强调色与权限策略配置。
+
+窗口内容较多，使用可滚动容器承载，所有配置写回 config.json 并通过回调
+通知主窗口应用新配置。
+"""
+
+from typing import Any, Callable, Optional
+
+import customtkinter as ctk
+from loguru import logger
+
+from models.config import Config, load_config, save_config
+from models.decision_prompt import DecisionMode
+from ui.theme import accent_names
+
+
+def _apply_window_icon(window: Any) -> None:
+    """为弹窗设置标题栏图标：优先 app.ico，退回 tray.ico。"""
+    from pathlib import Path
+
+    import sys
+
+    names = ("app.ico", "tray.ico")
+    cands: list[str] = []
+    try:
+        cwd = Path.cwd()
+        exe_dir = Path(sys.executable).resolve().parent
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            for n in names:
+                cands.append(str(Path(meipass) / n))
+        for n in names:
+            cands.append(str(exe_dir / n))
+            cands.append(str(exe_dir / "_internal" / n))
+            cands.append(str(cwd / n))
+    except Exception:
+        cands.append(str(Path("app.ico")))
+    for c in cands:
+        if Path(c).is_file():
+            try:
+                window.iconbitmap(c)
+                return
+            except Exception:
+                continue
+
+# 常见可用模型选项（SiliconFlow 平台）
+_MODEL_OPTIONS: tuple[str, ...] = (
+    "deepseek-ai/DeepSeek-V4-Flash",
+    "deepseek-ai/DeepSeek-V3",
+    "deepseek-ai/DeepSeek-V2.5",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "THUDM/GLM-4-Plus",
+    "01-ai/Yi-1.5-34B-Chat",
+)
+
+_THEME_OPTIONS: tuple[str, ...] = ("dark", "light")
+
+_DECISION_MODE_OPTIONS: tuple[str, ...] = (
+    "off",
+    "ask",
+    "on",
+)
+_DECISION_MODE_LABELS: dict[str, str] = {
+    "off": "off (不启用)",
+    "ask": "ask (每次询问我)",
+    "on": "on (自动解析)",
+}
+_DECISION_LEVEL_OPTIONS: tuple[str, ...] = (
+    "beginner",
+    "normal",
+    "advanced",
+)
+_DECISION_LEVEL_LABELS: dict[str, str] = {
+    "beginner": "beginner (小白·最通俗)",
+    "normal": "normal (普通·通俗加轻术语)",
+    "advanced": "advanced (进阶·保留术语)",
+}
+
+
+class SettingsDialog(ctk.CTkToplevel):
+    """设置窗口，编辑并保存 DiffGuard 配置。
+
+    初始化属性:
+        on_saved: 保存成功后的回调，参数为新 Config 对象。
+    """
+
+    def __init__(
+        self,
+        master: Optional[Any],
+        on_saved: Callable[[Config], None],
+        config: Optional[Config] = None,
+    ) -> None:
+        """构造并显示设置窗口。
+
+        参数:
+            master: 父窗口。
+            on_saved: 保存成功后回调，签名 callable(new_config: Config)。
+            config: 初始配置；为 None 时从磁盘加载。
+        """
+        super().__init__(master)
+        self.title("DiffGuard - 设置")
+        self.geometry("520x620")
+        self.resizable(False, False)
+        self._on_saved: Callable[[Config], None] = on_saved
+        _apply_window_icon(self)
+
+        self._config: Config = config if config is not None else load_config()
+        self._build_ui()
+        self._load_values()
+        self.attributes("-topmost", True)
+        self.after(50, self.lift)
+        self.after(120, self.focus_force)
+
+    def _build_ui(self) -> None:
+        """构建可滚动的设置界面。"""
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        scroll: ctk.CTkScrollableFrame = ctk.CTkScrollableFrame(self)
+        scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 6))
+        scroll.grid_columnconfigure(0, weight=1)
+
+        self._scroll = scroll
+        r: int = 0
+
+        # ---------------- 基本 ----------------
+        ctk.CTkLabel(
+            scroll, text="基本", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(4, 2))
+        r += 1
+
+        ctk.CTkLabel(scroll, text="API Key (SiliconFlow)", anchor="w").grid(
+            row=r, column=0, sticky="ew", pady=(4, 2)
+        )
+        r += 1
+        self.api_key_entry: ctk.CTkEntry = ctk.CTkEntry(
+            scroll, show="*", placeholder_text="sk-..."
+        )
+        self.api_key_entry.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        ctk.CTkLabel(scroll, text="模型", anchor="w").grid(
+            row=r, column=0, sticky="ew", pady=(4, 2)
+        )
+        r += 1
+        self.model_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
+            scroll, values=list(_MODEL_OPTIONS)
+        )
+        self.model_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        # ---------------- 外观 ----------------
+        ctk.CTkLabel(
+            scroll, text="外观", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
+        r += 1
+
+        self.theme_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
+            scroll, values=list(_THEME_OPTIONS)
+        )
+        self.theme_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        self.accent_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
+            scroll, values=list(accent_names())
+        )
+        self.accent_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        # ---------------- 监听与权限 ----------------
+        ctk.CTkLabel(
+            scroll, text="监听与权限", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
+        r += 1
+
+        self.auto_clipboard_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="自动监听剪贴板 (检测 git diff)"
+        )
+        self.auto_clipboard_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        self.permission_monitor_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="权限审批监控 (识别并提示授权请求)"
+        )
+        self.permission_monitor_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        self.floating_mode_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="权限审批浮窗置顶显示"
+        )
+        self.floating_mode_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        self.tray_notify_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="高风险权限请求发送系统托盘通知"
+        )
+        self.tray_notify_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        # ---------------- 权限策略 ----------------
+        ctk.CTkLabel(
+            scroll, text="权限策略", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
+        r += 1
+
+        self.auto_allow_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="低风险权限请求自动放行"
+        )
+        self.auto_allow_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        thr_row: int = r
+        ctk.CTkLabel(scroll, text="自动放行风险阈值 (风险分 < 值)，默认 20", anchor="w").grid(
+            row=r, column=0, sticky="w", pady=(2, 2)
+        )
+        r += 1
+        self.threshold_slider: ctk.CTkSlider = ctk.CTkSlider(
+            scroll, from_=5, to=40, number_of_steps=35
+        )
+        self.threshold_slider.grid(row=r, column=0, sticky="ew", pady=(0, 4))
+        r += 1
+        self.threshold_value_label: ctk.CTkLabel = ctk.CTkLabel(
+            scroll, text="", anchor="w", text_color="#9ca3af"
+        )
+        self.threshold_value_label.grid(row=r, column=0, sticky="w", pady=(0, 6))
+        self.threshold_slider.configure(
+            command=lambda v: self.threshold_value_label.configure(text=f"阈值: {int(v)}")
+        )
+        r += 1
+
+        self.keyboard_inject_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll,
+            text="键盘注入回写 (TUI 终端工具，实验性，默认关闭)",
+        )
+        self.keyboard_inject_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        # ---------------- 决策助手 ----------------
+        ctk.CTkLabel(
+            scroll, text="决策助手", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
+        r += 1
+
+        ctk.CTkLabel(
+            scroll,
+            text="模式：off=关闭 / ask=检测到后询问 / on=自动解析",
+            anchor="w",
+            wraplength=470,
+            justify="left",
+        ).grid(row=r, column=0, sticky="ew", pady=(2, 2))
+        r += 1
+        self.decision_mode_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
+            scroll, values=[_DECISION_MODE_LABELS[k] for k in _DECISION_MODE_OPTIONS]
+        )
+        self.decision_mode_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        ctk.CTkLabel(scroll, text="解释措辞水平", anchor="w").grid(
+            row=r, column=0, sticky="ew", pady=(4, 2)
+        )
+        r += 1
+        self.decision_level_option: ctk.CTkOptionMenu = ctk.CTkOptionMenu(
+            scroll,
+            values=[_DECISION_LEVEL_LABELS[k] for k in _DECISION_LEVEL_OPTIONS],
+        )
+        self.decision_level_option.grid(row=r, column=0, sticky="ew", pady=(0, 6))
+        r += 1
+
+        self.decision_auto_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="检测到决策自动调用 AI 解析 (ask 模式下无效)"
+        )
+        self.decision_auto_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        self.decision_overlay_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="前台模式显示决策徽标"
+        )
+        self.decision_overlay_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        # ---------------- OpenCode 集成 ----------------
+        ctk.CTkLabel(
+            scroll, text="OpenCode 集成", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
+        r += 1
+
+        self.opencode_bridge_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="启用决策反馈闭环 (用户选择回写供 Agent 参考)"
+        )
+        self.opencode_bridge_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        self.opencode_mcp_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="启用 OpenCode 决策请求通道 (Agent 可提交决策)"
+        )
+        self.opencode_mcp_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        # ---------------- 其它 ----------------
+        ctk.CTkLabel(
+            scroll, text="其它", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
+        r += 1
+
+        self.check_update_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="启动时检查更新"
+        )
+        self.check_update_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
+        # 保存按钮
+        self.save_button: ctk.CTkButton = ctk.CTkButton(
+            scroll, text="保存", command=self._on_save_clicked
+        )
+        self.save_button.grid(row=r, column=0, pady=16, sticky="ew")
+        r += 1
+
+    def _load_values(self) -> None:
+        """将当前配置填充到控件中。"""
+        self.api_key_entry.delete(0, "end")
+        self.api_key_entry.insert(0, self._config.api_key)
+        self.model_option.set(
+            self._config.model if self._config.model in _MODEL_OPTIONS else _MODEL_OPTIONS[0]
+        )
+        self.theme_option.set(
+            self._config.theme if self._config.theme in _THEME_OPTIONS else "dark"
+        )
+        self.accent_option.set(
+            self._config.accent if self._config.accent in accent_names() else "blue"
+        )
+        sw = (
+            self.auto_clipboard_switch,
+            self.permission_monitor_switch,
+            self.floating_mode_switch,
+            self.tray_notify_switch,
+            self.auto_allow_switch,
+            self.keyboard_inject_switch,
+            self.check_update_switch,
+        )
+        vals = (
+            self._config.auto_clipboard,
+            self._config.permission_monitor,
+            self._config.floating_mode_enabled,
+            self._config.tray_notify,
+            self._config.auto_allow_low_risk,
+            self._config.keyboard_inject,
+            self._config.check_updates,
+        )
+        for s, v in zip(sw, vals):
+            (s.select() if v else s.deselect())
+        self.threshold_slider.set(self._config.auto_allow_threshold)
+        self.threshold_value_label.configure(
+            text=f"阈值: {self._config.auto_allow_threshold}"
+        )
+
+        mode: str = self._config.decision_assistant
+        self.decision_mode_option.set(
+            _DECISION_MODE_LABELS[mode]
+            if mode in _DECISION_MODE_LABELS
+            else _DECISION_MODE_LABELS["off"]
+        )
+        level: str = self._config.decision_level
+        self.decision_level_option.set(
+            _DECISION_LEVEL_LABELS[level]
+            if level in _DECISION_LEVEL_LABELS
+            else _DECISION_LEVEL_LABELS["normal"]
+        )
+        (self.decision_auto_switch.select() if self._config.decision_auto else self.decision_auto_switch.deselect())
+        (self.decision_overlay_switch.select() if self._config.decision_show_overlay else self.decision_overlay_switch.deselect())
+        (self.opencode_bridge_switch.select() if getattr(self._config, "opencode_bridge", True) else self.opencode_bridge_switch.deselect())
+        (self.opencode_mcp_switch.select() if getattr(self._config, "opencode_mcp", True) else self.opencode_mcp_switch.deselect())
+
+    def _on_save_clicked(self) -> None:
+        """收集界面值、保存配置并关闭窗口。"""
+        mode_val: str = self.decision_mode_option.get()
+        mode: str = next(
+            (k for k, v in _DECISION_MODE_LABELS.items() if v == mode_val), "off"
+        )
+        level_val: str = self.decision_level_option.get()
+        level: str = next(
+            (k for k, v in _DECISION_LEVEL_LABELS.items() if v == level_val), "normal"
+        )
+        cfg = Config(
+            api_key=self.api_key_entry.get().strip(),
+            model=self.model_option.get(),
+            auto_clipboard=bool(self.auto_clipboard_switch.get()),
+            permission_monitor=bool(self.permission_monitor_switch.get()),
+            floating_mode_enabled=bool(self.floating_mode_switch.get()),
+            theme=self.theme_option.get(),
+            accent=self.accent_option.get(),
+            tray_notify=bool(self.tray_notify_switch.get()),
+            auto_allow_low_risk=bool(self.auto_allow_switch.get()),
+            auto_allow_threshold=int(self.threshold_slider.get()),
+            keyboard_inject=bool(self.keyboard_inject_switch.get()),
+            check_updates=bool(self.check_update_switch.get()),
+            decision_assistant=mode,
+            decision_level=level,
+            decision_auto=bool(self.decision_auto_switch.get()),
+            decision_show_overlay=bool(self.decision_overlay_switch.get()),
+            opencode_bridge=bool(self.opencode_bridge_switch.get()),
+            opencode_mcp=bool(self.opencode_mcp_switch.get()),
+        )
+        try:
+            save_config(cfg)
+            logger.info("设置已保存")
+            self._on_saved(cfg)
+            self.destroy()
+        except Exception as exc:
+            logger.error("保存设置失败: {}", exc)
+            ctk.CTkLabel(
+                self._scroll, text=f"保存失败: {exc}", text_color="red", anchor="w"
+            ).grid(row=99, column=0, sticky="w", padx=4, pady=(4, 0))
+
+
+# ----------------------------------------------------------------------
+# 首启引导：首次使用决策助手时询问启用方式
+# ----------------------------------------------------------------------
+class FirstRunDecisionDialog(ctk.CTkToplevel):
+    """首次启动引导：让用户选择决策助手启用方式（只弹一次）。
+
+    三选一：
+        off 不启用 / ask 每次询问我 / on 自动解析。
+    另有"暂不设置，稍后再说"选项，选择后以 off 保存但标记为已引导。
+    """
+
+    def __init__(
+        self,
+        master: Any,
+        on_choice: Callable[[str], None],
+        config: Optional[Config] = None,
+    ) -> None:
+        super().__init__(master)
+        self._on_choice: Callable[[str], None] = on_choice
+        self._config: Config = config if config is not None else load_config()
+        self.title("DiffGuard - 决策助手")
+        self.geometry("540x430")
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        _apply_window_icon(self)
+        self.grab_set()
+
+        self._build_ui()
+        self.after(50, self.lift)
+        self.after(120, self.focus_force)
+
+    def _build_ui(self) -> None:
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        title: ctk.CTkLabel = ctk.CTkLabel(
+            self,
+            text="欢迎使用「决策助手」",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            anchor="w",
+        )
+        title.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 4))
+
+        body: ctk.CTkLabel = ctk.CTkLabel(
+            self,
+            text=(
+                "当你用 AI 编程助手（如 OpenCode、Cursor 等）时，它有时会让你做选择，"
+                "比如「打包成哪种格式」。\n\n"
+                "决策助手能帮你：\n"
+                "   • 用通俗的话解释每个选项是什么意思\n"
+                "   • 评估每个选项的风险，并给出推荐\n\n"
+                "请选择启用方式："
+            ),
+            anchor="w",
+            justify="left",
+            wraplength=490,
+            text_color=_FG,
+            font=ctk.CTkFont(size=12),
+        )
+        body.grid(row=1, column=0, sticky="nw", padx=20, pady=(4, 8))
+
+        choices: list[tuple[str, str]] = [
+            (
+                DecisionMode.OFF.value,
+                "不启用 — 关闭此功能，需要时可到设置里打开",
+            ),
+            (
+                DecisionMode.ASK.value,
+                "每次询问我 — 检测到决策时先问我要不要解析",
+            ),
+            (
+                DecisionMode.ON.value,
+                "启用 — 检测到决策自动解析并给出建议",
+            ),
+        ]
+        self._choice_var: Any = ctk.StringVar(value=DecisionMode.ON.value)
+        r: int = 2
+        for value, label in choices:
+            ctk.CTkRadioButton(
+                self,
+                text=label,
+                value=value,
+                variable=self._choice_var,
+                anchor="w",
+                font=ctk.CTkFont(size=12),
+            ).grid(row=r, column=0, sticky="ew", padx=26, pady=3)
+            r += 1
+
+        btns: ctk.CTkFrame = ctk.CTkFrame(self, fg_color="transparent")
+        btns.grid(row=r + 1, column=0, sticky="ew", padx=20, pady=(12, 16))
+        btns.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(
+            btns, text="保存选择", width=120, height=34, command=self._save
+        ).grid(row=0, column=1, padx=(0, 8))
+        ctk.CTkButton(
+            btns,
+            text="暂不设置，稍后再说",
+            width=160,
+            height=34,
+            fg_color="#333333",
+            hover_color="#444444",
+            command=self._skip,
+        ).grid(row=0, column=2, padx=(8, 0))
+
+    def _save(self) -> None:
+        """保存选择并调用回调。"""
+        mode: str = self._choice_var.get()
+        self._config.decision_assistant = mode
+        if mode == DecisionMode.OFF.value:
+            self._config.decision_auto = False
+        try:
+            save_config(self._config)
+            logger.info("首启引导：决策助手模式设为 {}", mode)
+        except Exception as exc:
+            logger.error("保存首启引导配置失败: {}", exc)
+        self._on_choice(mode)
+        self.destroy()
+
+    def _skip(self) -> None:
+        """暂不设置：以 off 保存并标记已引导。"""
+        self._config.decision_assistant = DecisionMode.OFF.value
+        try:
+            save_config(self._config)
+            logger.info("首启引导：用户暂不设置，默认 off")
+        except Exception as exc:
+            logger.error("保存首启引导配置失败: {}", exc)
+        self._on_choice(DecisionMode.OFF.value)
+        self.destroy()
