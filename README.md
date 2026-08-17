@@ -4,7 +4,7 @@ DiffGuard 是一款面向开发者的本地桌面安全工具：**审查 Git Dif
 
 同时，DiffGuard 提供了与 AI 编程 Agent（如 OpenCode）的双向协作能力：MCP Server、决策反馈闭环、决策请求通道、pre-commit 审查钩子与命令行接口。
 
-- 技术栈：Python 3.10+ · CustomTkinter · SQLModel · Windows UI Automation · 可选 SiliconFlow 大模型
+- 技术栈：Python 3.10+ · CustomTkinter · SQLModel · Windows UI Automation · 可选 AI 大模型（SiliconFlow / OpenCode Zen / OpenCode Go）
 - 平台：Windows 10 / 11（64 位）
 - 许可证：MIT
 
@@ -38,7 +38,7 @@ python main.py
 # 或双击 start.bat（Windows，自动检查依赖）
 ```
 
-1. 首次使用点击 **设置**，填入 SiliconFlow API Key 并选择模型，保存。
+1. 首次使用点击 **设置**，选择 AI 提供方（SiliconFlow / OpenCode Zen / OpenCode Go），填入对应 API Key 并选择模型，保存。
 2. 复制任意 git diff（`git diff` 输出）到剪贴板，程序自动载入；点击 **开始审查**（Ctrl+Enter）生成 AI 报告。
 3. 若检测到权限请求，屏幕会弹出**权限审批浮窗**，选择"允许一次 / 总是允许 / 拒绝"。
 
