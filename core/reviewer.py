@@ -1,24 +1,15 @@
 # -*- coding: utf-8 -*-
-"""AI 审查模块：调用 SiliconFlow 大模型，以流式方式生成中文结构化审查报告。
+"""AI 审查模块：调用大模型，以流式方式生成中文结构化审查报告。
 
 analyze_diff() 是一个生成器函数，通过 yield 逐段返回模型输出，
-便于 GUI 在线程中进行流式展示；所有异常被捕获并转为友好的错误文本。
+便于 GUI 在线程中进行流式展示；调用与异常处理由 core.ai_client.stream_chat
+统一提供，本模块只维护审查提示词。
 """
 
 from collections.abc import Iterator
-from typing import Any
 
-from loguru import logger
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    APIStatusError,
-    AuthenticationError,
-    OpenAI,
-    RateLimitError,
-)
-
-from models.config import Config, provider_base_url
+from core.ai_client import stream_chat
+from models.config import Config
 
 SYSTEM_PROMPT: str = """
 你是一位资深代码审查专家。请分析以下 git diff，提供中文结构化审查报告。
@@ -55,6 +46,7 @@ SYSTEM_PROMPT: str = """
 列出必须确认的问题。
 """
 
+
 def _build_user_prompt(diff_text: str) -> str:
     """构造用户提示词：包含待审查的 diff 全文。"""
     return f"请审查以下 git diff：\n\n{diff_text}"
@@ -66,48 +58,10 @@ def analyze_diff(diff_text: str, config: Config) -> Iterator[str]:
     配置了 API Key 直接调用；异常（认证失败、超时、限流、余额不足等）
     均被捕获，并 yield 友好的错误提示，不向上抛异常。
     """
-    if not config.api_key or not config.api_key.strip():
-        logger.warning("未配置 API Key，跳过 AI 审查")
-        yield "\n\n[错误] 尚未配置 API Key，请在“设置”中填写后重试。\n"
-        return
-
-    base_url: str = provider_base_url(getattr(config, "provider", ""))
-    client: OpenAI = OpenAI(api_key=config.api_key, base_url=base_url)
-
-    try:
-        logger.info("开始调用模型 {} 审查 diff（提供方 {}）", config.model, getattr(config, "provider", "siliconflow"))
-        response: Any = client.chat.completions.create(
-            model=config.model,
-            temperature=0.2,
-            max_tokens=4096,
-            stream=True,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_user_prompt(diff_text)},
-            ],
-        )
-        for chunk in response:
-            if not chunk.choices:
-                continue
-            delta: Any = chunk.choices[0].delta
-            content: str = delta.content if (delta and delta.content) else ""
-            if content:
-                yield content
-        logger.info("AI 审查完成")
-    except AuthenticationError as exc:
-        logger.error("API Key 无效: {}", exc)
-        yield "\n\n[错误] API Key 无效或已过期，请在设置中检查。\n"
-    except RateLimitError as exc:
-        logger.error("请求频率超限: {}", exc)
-        yield "\n\n[错误] 请求频率超限，请稍后重试。\n"
-    except (APITimeoutError, APIConnectionError) as exc:
-        logger.error("网络连接失败/超时: {}", exc)
-        yield "\n\n[错误] 网络连接失败或超时，请检查网络后重试。\n"
-    except APIStatusError as exc:
-        logger.error("API 返回异常状态码 {}: {}", exc.status_code, exc)
-        yield "\n\n[错误] 服务暂时不可用（HTTP {}），可能原因：余额不足或模型不可用。\n".format(
-            exc.status_code
-        )
-    except Exception as exc:  # 兜底捕获，避免线程崩溃
-        logger.exception("AI 审查发生未知异常: {}", exc)
-        yield "\n\n[错误] 审查过程发生未知异常，请查看日志。\n"
+    yield from stream_chat(
+        config,
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=_build_user_prompt(diff_text),
+        max_tokens=4096,
+        label="审查",
+    )

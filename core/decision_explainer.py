@@ -17,17 +17,9 @@ from collections.abc import Iterator
 from typing import Any
 
 from loguru import logger
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    APIStatusError,
-    AuthenticationError,
-    OpenAI,
-    RateLimitError,
-)
 
-from core.decision_parser import parse
-from models.config import Config, provider_base_url
+from core.ai_client import stream_chat, stream_lines
+from models.config import Config
 from models.decision_prompt import DecisionLevel, DecisionPrompt
 
 # 三档措辞风格说明（注入系统提示词）
@@ -99,61 +91,18 @@ def explain_decision(prompt: DecisionPrompt, config: Config) -> Iterator[str]:
 
     配置了 API Key 直接调用；异常均被捕获并 yield 友好错误行，不向上抛。
     """
-    if not config.api_key or not config.api_key.strip():
-        logger.warning("未配置 API Key，跳过决策解析")
-        yield "#ERROR# 尚未配置 API Key，请在“设置”中填写后重试。"
-        return
-
-    base_url: str = provider_base_url(getattr(config, "provider", ""))
-    client: OpenAI = OpenAI(api_key=config.api_key, base_url=base_url)
     level: str = getattr(config, "decision_level", DecisionLevel.NORMAL.value)
-    try:
-        logger.info("开始调用模型 {} 解析决策: {}", config.model, prompt.question[:60])
-        response: Any = client.chat.completions.create(
-            model=config.model,
-            temperature=0.2,
+    yield from stream_lines(
+        stream_chat(
+            config,
+            system_prompt=build_system_prompt(level),
+            user_prompt=_build_user_prompt(prompt),
             max_tokens=2048,
-            stream=True,
-            messages=[
-                {"role": "system", "content": build_system_prompt(level)},
-                {"role": "user", "content": _build_user_prompt(prompt)},
-            ],
+            error_prefix="#ERROR# ",
+            error_suffix="",
+            label="解析决策",
         )
-        buf: str = ""
-        for chunk in response:
-            if not chunk.choices:
-                continue
-            delta: Any = chunk.choices[0].delta
-            content: str = delta.content if (delta and delta.content) else ""
-            if not content:
-                continue
-            # 按行切分输出（行尾往往是增量，等换行再 yield）
-            buf += content
-            while "\n" in buf:
-                line, buf = buf.split("\n", 1)
-                line = line.strip()
-                if line:
-                    yield line
-        if buf.strip():
-            yield buf.strip()
-        logger.info("决策解析完成")
-    except AuthenticationError as exc:
-        logger.error("API Key 无效: {}", exc)
-        yield "#ERROR# API Key 无效或已过期，请在设置中检查。"
-    except RateLimitError as exc:
-        logger.error("请求频率超限: {}", exc)
-        yield "#ERROR# 请求频率超限，请稍后重试。"
-    except (APITimeoutError, APIConnectionError) as exc:
-        logger.error("网络连接失败/超时: {}", exc)
-        yield "#ERROR# 网络连接失败或超时，请检查网络后重试。"
-    except APIStatusError as exc:
-        logger.error("API 返回异常状态码 {}: {}", exc.status_code, exc)
-        yield "#ERROR# 服务暂时不可用（HTTP {}），可能原因：余额不足或模型不可用。".format(
-            exc.status_code
-        )
-    except Exception as exc:  # 兜底
-        logger.exception("决策解析发生未知异常: {}", exc)
-        yield "#ERROR# 解析过程发生未知异常，请查看日志。"
+    )
 
 
 def parse_opt_line(line: str) -> dict[str, Any]:
