@@ -10,22 +10,17 @@
 
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
-import platformdirs
 from loguru import logger
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, select
+
+from models.db import get_engine
 
 # 用户决策状态常量
 DECISION_PENDING: str = "pending"
 DECISION_CHOSEN: str = "chosen"
 DECISION_SKIPPED: str = "skipped"
-
-
-def _decision_db_path() -> Path:
-    """返回 SQLite 数据库文件路径（与审查历史共用）。"""
-    return Path(platformdirs.user_data_dir("DiffGuard")) / "diffguard.db"
 
 
 class DecisionRecord(SQLModel, table=True):
@@ -54,21 +49,6 @@ class DecisionRecord(SQLModel, table=True):
     raw_text: str = ""
 
 
-# 初始化共享数据库引擎（独立 engine，避免与其它模块耦合初始化顺序）
-_decision_db_file: Path = _decision_db_path()
-try:
-    _decision_db_file.parent.mkdir(parents=True, exist_ok=True)
-    decision_engine = create_engine(
-        f"sqlite:///{_decision_db_file}",
-        connect_args={"check_same_thread": False},
-    )
-    SQLModel.metadata.create_all(decision_engine)
-    logger.info("决策历史数据库初始化完成: {}", _decision_db_file)
-except Exception as exc:
-    logger.error("决策历史数据库初始化失败: {}", exc)
-    decision_engine = None
-
-
 def save_decision(
     source: str,
     question: str,
@@ -80,7 +60,8 @@ def save_decision(
     timestamp: Optional[datetime] = None,
 ) -> Optional[int]:
     """保存一条决策反馈记录，返回新记录主键；失败返回 None。"""
-    if decision_engine is None:
+    engine = get_engine()
+    if engine is None:
         logger.error("决策历史数据库未初始化，无法保存")
         return None
     try:
@@ -94,7 +75,7 @@ def save_decision(
             user_decision=user_decision,
             raw_text=raw_text,
         )
-        with Session(decision_engine) as session:
+        with Session(engine) as session:
             session.add(record)
             session.commit()
             session.refresh(record)
@@ -107,10 +88,11 @@ def save_decision(
 
 def get_recent_decisions(limit: int = 50) -> list[DecisionRecord]:
     """返回最近 limit 条决策反馈记录，按时间倒序。"""
-    if decision_engine is None:
+    engine = get_engine()
+    if engine is None:
         return []
     try:
-        with Session(decision_engine) as session:
+        with Session(engine) as session:
             statement = select(DecisionRecord).order_by(
                 DecisionRecord.timestamp.desc()
             ).limit(limit)
@@ -122,10 +104,11 @@ def get_recent_decisions(limit: int = 50) -> list[DecisionRecord]:
 
 def get_decision_by_id(record_id: int) -> Optional[DecisionRecord]:
     """按主键查询单条决策记录，不存在时返回 None。"""
-    if decision_engine is None:
+    engine = get_engine()
+    if engine is None:
         return None
     try:
-        with Session(decision_engine) as session:
+        with Session(engine) as session:
             return session.get(DecisionRecord, record_id)
     except Exception as exc:
         logger.error("查询决策记录 id={} 失败: {}", record_id, exc)

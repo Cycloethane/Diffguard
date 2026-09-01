@@ -7,13 +7,12 @@
 
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
-import platformdirs
 from loguru import logger
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, select
 
+from models.db import get_engine
 from models.permission_prompt import (
     PermissionPrompt,
     PromptAction,
@@ -25,11 +24,6 @@ PERMISSION_PENDING: str = "pending"
 PERMISSION_ONCE_ALLOWED: str = "once_allowed"
 PERMISSION_ALWAYS_ALLOWED: str = "always_allowed"
 PERMISSION_REJECTED: str = "rejected"
-
-
-def _permission_db_path() -> Path:
-    """返回 SQLite 数据库文件路径（与审查历史共用）。"""
-    return Path(platformdirs.user_data_dir("DiffGuard")) / "diffguard.db"
 
 
 class PermissionRecord(SQLModel, table=True):
@@ -62,21 +56,6 @@ class PermissionRecord(SQLModel, table=True):
     user_decision: str = PERMISSION_PENDING
 
 
-# 初始化共享数据库引擎（独立 engine，避免与审查历史模块耦合初始化顺序）
-_permission_db_file: Path = _permission_db_path()
-try:
-    _permission_db_file.parent.mkdir(parents=True, exist_ok=True)
-    permission_engine = create_engine(
-        f"sqlite:///{_permission_db_file}",
-        connect_args={"check_same_thread": False},
-    )
-    SQLModel.metadata.create_all(permission_engine)
-    logger.info("权限历史数据库初始化完成: {}", _permission_db_file)
-except Exception as exc:  # 失败时保证程序仍可启动
-    logger.error("权限历史数据库初始化失败: {}", exc)
-    permission_engine = None
-
-
 def _to_record(prompt: PermissionPrompt) -> PermissionRecord:
     """将 PermissionPrompt 转为数据库记录。"""
     return PermissionRecord(
@@ -94,12 +73,13 @@ def _to_record(prompt: PermissionPrompt) -> PermissionRecord:
 
 def save_permission(prompt: PermissionPrompt) -> Optional[int]:
     """保存一条权限审批记录，返回新记录主键；失败返回 None。"""
-    if permission_engine is None:
+    engine = get_engine()
+    if engine is None:
         logger.error("权限历史数据库未初始化，无法保存")
         return None
     record = _to_record(prompt)
     try:
-        with Session(permission_engine) as session:
+        with Session(get_engine()) as session:
             session.add(record)
             session.commit()
             session.refresh(record)
@@ -112,10 +92,11 @@ def save_permission(prompt: PermissionPrompt) -> Optional[int]:
 
 def get_recent_permissions(limit: int = 50) -> list[PermissionRecord]:
     """返回最近 limit 条权限记录，按时间倒序。"""
-    if permission_engine is None:
+    engine = get_engine()
+    if engine is None:
         return []
     try:
-        with Session(permission_engine) as session:
+        with Session(engine) as session:
             statement = select(PermissionRecord).order_by(
                 PermissionRecord.timestamp.desc()
             ).limit(limit)
@@ -127,7 +108,8 @@ def get_recent_permissions(limit: int = 50) -> list[PermissionRecord]:
 
 def update_permission_decision(record_id: int, decision: str) -> bool:
     """更新一条权限记录的 user_decision，成功返回 True。"""
-    if permission_engine is None:
+    engine = get_engine()
+    if engine is None:
         return False
     if decision not in (
         PERMISSION_PENDING,
@@ -138,7 +120,7 @@ def update_permission_decision(record_id: int, decision: str) -> bool:
         logger.warning("非法权限决策值: {}", decision)
         return False
     try:
-        with Session(permission_engine) as session:
+        with Session(engine) as session:
             record = session.get(PermissionRecord, record_id)
             if record is None:
                 logger.warning("更新权限决策失败，记录不存在 id={}", record_id)

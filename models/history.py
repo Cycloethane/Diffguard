@@ -6,12 +6,12 @@ diffguard.db），提供保存、查询最近记录与按主键查询等函数�
 """
 
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
-import platformdirs
 from loguru import logger
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, select
+
+from models.db import get_engine
 
 # 用户决策状态常量
 DECISION_PENDING: str = "pending"
@@ -22,11 +22,6 @@ DECISION_REJECTED: str = "rejected"
 RISK_LOW: str = "low"
 RISK_MEDIUM: str = "medium"
 RISK_HIGH: str = "high"
-
-
-def _db_path() -> Path:
-    """返回 SQLite 数据库文件路径。"""
-    return Path(platformdirs.user_data_dir("DiffGuard")) / "diffguard.db"
 
 
 class ReviewHistory(SQLModel, table=True):
@@ -53,21 +48,6 @@ class ReviewHistory(SQLModel, table=True):
     raw_diff: str
 
 
-# 初始化数据库引擎与表结构（模块导入时执行一次）
-_db_file: Path = _db_path()
-try:
-    _db_file.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(
-        f"sqlite:///{_db_file}",
-        connect_args={"check_same_thread": False},
-    )
-    SQLModel.metadata.create_all(engine)
-    logger.info("数据库初始化完成: {}", _db_file)
-except Exception as exc:  # 数据库初始化失败时保证程序仍可启动
-    logger.error("数据库初始化失败: {}", exc)
-    engine = None
-
-
 def save_review(
     title: str,
     file_count: int,
@@ -78,6 +58,7 @@ def save_review(
     timestamp: Optional[datetime] = None,
 ) -> Optional[int]:
     """保存一条审查历史，返回新记录的主键；失败返回 None。"""
+    engine = get_engine()
     if engine is None:
         logger.error("数据库未初始化，无法保存历史")
         return None
@@ -104,6 +85,7 @@ def save_review(
 
 def get_recent(limit: int = 50) -> list[ReviewHistory]:
     """返回最近 limit 条审查记录，按时间倒序。"""
+    engine = get_engine()
     if engine is None:
         logger.error("数据库未初始化，无法查询历史")
         return []
@@ -121,6 +103,7 @@ def get_recent(limit: int = 50) -> list[ReviewHistory]:
 
 def get_by_id(record_id: int) -> Optional[ReviewHistory]:
     """按主键查询单条历史记录，不存在时返回 None。"""
+    engine = get_engine()
     if engine is None:
         logger.error("数据库未初始化，无法查询历史")
         return None
@@ -135,6 +118,7 @@ def get_by_id(record_id: int) -> Optional[ReviewHistory]:
 
 def update_decision(record_id: int, decision: str) -> bool:
     """更新一条记录的 user_decision，成功返回 True。"""
+    engine = get_engine()
     if engine is None:
         logger.error("数据库未初始化，无法更新历史")
         return False
