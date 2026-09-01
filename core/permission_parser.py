@@ -13,16 +13,8 @@ import os
 import re
 from typing import List, Optional
 
+from core.agent_sources import PERMISSION_SOURCE_MARKERS as _SOURCE_MARKERS
 from models.permission_prompt import PermissionPrompt, PromptAction, PromptType
-
-# ----------------------------------------------------------------------
-# 来源特征词（在"标题+正文"中累计命中 2 个及以上才判定位来源）
-# ----------------------------------------------------------------------
-_SOURCE_MARKERS: dict[str, tuple[str, ...]] = {
-    "OpenCode": ("opencode", "permission required", "allow once", "allow always", "reject"),
-    "Cursor": ("cursor", "composer", "auto-review"),
-    "Cline": ("cline", "api request", "terminal command"),
-}
 
 # ----------------------------------------------------------------------
 # 内容证据词（用于减少误报）

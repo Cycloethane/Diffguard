@@ -818,7 +818,8 @@ class DiffGuardApp(ctk.CTk):
             logger.debug("初始化决策浮窗失败: {}", exc)
             self._decision_alert = None
         self._decision_watcher = DecisionWatcher(
-            on_decision_detected=self._on_watcher_decision
+            on_decision_detected=self._on_watcher_decision,
+            read_bridge_decision=bridge_store.read_agent_decision_prompt,
         )
         self._decision_watcher.start()
         logger.info("决策助手已启动，模式: {}", mode)

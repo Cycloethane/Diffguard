@@ -13,8 +13,6 @@
 after() 方法）以保证线程安全。
 """
 
-import threading
-import time
 from typing import Callable, Optional
 
 import pyperclip
@@ -22,6 +20,7 @@ from loguru import logger
 
 from core.permission_parser import PermissionParser
 from core.permission_risk import score_prompt
+from core.watchers import BaseWatcher
 from models.permission_prompt import PermissionPrompt
 
 # 判定剪贴板内容为 git diff 的标记
@@ -30,7 +29,7 @@ _DIFF_MARKER: str = "diff --git"
 _DEFAULT_INTERVAL: float = 1.0
 
 
-class ClipboardWatcher(threading.Thread):
+class ClipboardWatcher(BaseWatcher):
     """后台线程，周期性读取剪贴板并触发各通道回调。
 
     属性:
@@ -54,31 +53,24 @@ class ClipboardWatcher(threading.Thread):
                 None 时权限通道关闭。
             interval: 每次读取剪贴板之间的间隔秒数。
         """
-        super().__init__(daemon=True)
+        super().__init__(interval, name="ClipboardWatcher")
         self.on_diff_detected: Callable[[str], None] = on_diff_detected
         self.on_permission_detected: Optional[Callable[[PermissionPrompt], None]] = (
             on_permission_detected
         )
-        self.interval: float = interval
         self._last_content: Optional[str] = None
         self._last_permission_text: Optional[str] = None
         self._permission_baseline_done: bool = False
-        self._stop_event: threading.Event = threading.Event()
-        self.name = "ClipboardWatcher"
 
-    def run(self) -> None:
-        """线程主循环：每秒读取一次剪贴板并比对。"""
-        logger.info("剪贴板监听线程启动，间隔 {} 秒", self.interval)
-        while not self._stop_event.is_set():
-            try:
-                text: str = pyperclip.paste()
-                if text:
-                    self._handle_text(text)
-            except Exception as exc:
-                # Windows 下剪贴板可能被其它程序占用或被拒绝访问，忽略并重试
-                logger.debug("读取剪贴板失败: {}", exc)
-            self._stop_event.wait(self.interval)
-        logger.info("剪贴板监听线程已停止")
+    def tick(self) -> None:
+        """每轮读取一次剪贴板并分发到各通道。"""
+        try:
+            text: str = pyperclip.paste()
+            if text:
+                self._handle_text(text)
+        except Exception as exc:
+            # Windows 下剪贴板可能被其它程序占用或被拒绝访问，忽略并重试
+            logger.debug("读取剪贴板失败: {}", exc)
 
     def _handle_text(self, text: str) -> None:
         if _DIFF_MARKER in text:
@@ -103,8 +95,3 @@ class ClipboardWatcher(threading.Thread):
                 )
                 prompt.risk_score, prompt.breakdown = score_prompt(prompt)
                 self.on_permission_detected(prompt)
-
-    def stop(self) -> None:
-        """请求停止监听线程。"""
-        logger.info("请求停止剪贴板监听线程")
-        self._stop_event.set()

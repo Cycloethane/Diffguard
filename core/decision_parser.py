@@ -12,6 +12,7 @@
 import re
 from typing import List, Optional
 
+from core.agent_sources import DECISION_SOURCE_ORDER
 from models.decision_prompt import DecisionOption, DecisionPrompt
 
 # ----------------------------------------------------------------------
@@ -357,17 +358,10 @@ def _extract_question(text: str, options: List[DecisionOption]) -> str:
     return q[:200]
 
 
-_SOURCE_MARKERS: dict[str, tuple[str, ...]] = {
-    "OpenCode": ("opencode", "permission required", "open code"),
-    "Cursor": ("cursor", "composer", "auto-review"),
-    "Cline": ("cline", "api request", "terminal command"),
-}
-
-
 def _detect_source(window_title: str, text: str) -> str:
     """来源识别：标题或正文命中来源关键词即归属该来源。"""
     lower: str = f"{window_title}\n{text}".lower()
-    for source in _SOURCE_MARKERS:
+    for source in DECISION_SOURCE_ORDER:
         if source.lower() in lower:
             return source
     if "clipboard" in window_title.lower():

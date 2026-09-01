@@ -140,6 +140,40 @@ def clear_agent_decision() -> None:
         pass
 
 
+def read_agent_decision_prompt():
+    """读取并消费 Agent 决策请求，构造 DecisionPrompt；无请求/非法返回 None。
+
+    这是 DecisionWatcher 桥接通道的读取函数（依赖注入传入，避免
+    core 反向依赖 bridge）。读取成功即清空请求文件（消费语义）；
+    source 字段透传给 DecisionPrompt（旧文件缺省时回退 "OpenCode"）。
+    """
+    from models.decision_prompt import DecisionOption, DecisionPrompt
+
+    data = read_agent_decision()
+    if not data:
+        return None
+    question: str = str(data.get("question", "")).strip()
+    options_raw: list = data.get("options", []) or []
+    options: list[dict] = []
+    for o in options_raw[:12]:
+        if isinstance(o, dict):
+            key = str(o.get("key", "") or "")
+            text = str(o.get("text", "") or "")
+            if key and text:
+                options.append({"key": key, "text": text})
+    if not question or len(options) < 2:
+        clear_agent_decision()
+        return None
+    prompt = DecisionPrompt(
+        question=question,
+        source=str(data.get("source", "") or "OpenCode"),
+        options=[DecisionOption(key=o["key"], text=o["text"]) for o in options],
+        raw_text=question + "\n" + "\n".join(f"{o['key']}) {o['text']}" for o in options),
+    )
+    clear_agent_decision()
+    return prompt
+
+
 # ----------------------------------------------------------------------
 # 审查请求 / 结果（功能1/2：Agent 请求审查，DiffGuard 返回结果）
 # ----------------------------------------------------------------------
