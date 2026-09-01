@@ -1,0 +1,35 @@
+# 项目级安全策略即配置：DiffGuard 生成的 .opencode/ 模板
+# 复制到任意项目根目录即可启用 DiffGuard 安全审查与决策协作。
+
+{
+  "mcp": {
+    "diffguard": {
+      "type": "stdio",
+      "command": ["python", "-m", "bridge.mcp_server"],
+      "cwd": "D:/SP_DiffGuard"
+    }
+  },
+
+  "permissions": {
+    "allow": [
+      "diff",
+      "git status",
+      "git diff*",
+      "git log*"
+    ],
+    "ask": [
+      "git reset*",
+      "git clean*",
+      "git push --force*",
+      "rm -rf*",
+      "del /s*",
+      "rd /s*",
+      "reg delete*",
+      "taskkill*"
+    ]
+  },
+
+  "skills": {
+    "diffguard": "D:/SP_DiffGuard/opencode/SKILL.md"
+  }
+}

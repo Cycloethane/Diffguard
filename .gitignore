@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 测试与构建产物
+.pytest_cache/
+dist/
+build/
+*.spec
+opencode/plugin/dist/
+opencode/plugin/node_modules/
+
+# 运行时数据(不入库)
+*.db
+*.sqlite3
+
+# IDE / 系统
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
