@@ -22,3 +22,4 @@ opencode/plugin/node_modules/
 .vscode/
 Thumbs.db
 .DS_Store
+.zcode/plans/
