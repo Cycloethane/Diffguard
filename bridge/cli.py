@@ -145,7 +145,7 @@ def cmd_submit_decision(args: argparse.Namespace) -> int:
     if len(options) < 2:
         print("[错误] 需要至少两个选项，如：--options 'A) 单文件 B) 目录'")
         return 2
-    ok = store.write_agent_decision(args.question, options, args.context)
+    ok = store.write_agent_decision(args.question, options, args.context, source=args.source)
     if not ok:
         print("[错误] 写入决策请求失败。")
         return 1
@@ -164,7 +164,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
     print(f"决策助手: {cfg.decision_assistant}（水平 {cfg.decision_level}）")
     print(f"权限监控: {cfg.permission_monitor}")
     print(f"剪贴板监听: {cfg.auto_clipboard}")
-    print(f"OpenCode 桥接: {cfg.opencode_bridge} | MCP: {cfg.opencode_mcp}")
+    print(f"OpenCode 桥接: {cfg.agent_bridge} | MCP: {cfg.agent_mcp}")
     print(f"决策总数: {stats['total']}")
     return 0
 
@@ -273,6 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--question", required=True)
     p.add_argument("--options", required=True, help="如 'A) 单文件 B) 目录' 或 JSON")
     p.add_argument("--context", default="")
+    p.add_argument("--source", default="CLI", help="提交来源标识（如 ZCode）")
     p.set_defaults(func=cmd_submit_decision)
 
     p = sub.add_parser("status", help="当前状态")

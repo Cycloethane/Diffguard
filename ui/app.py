@@ -819,7 +819,11 @@ class DiffGuardApp(ctk.CTk):
             self._decision_alert = None
         self._decision_watcher = DecisionWatcher(
             on_decision_detected=self._on_watcher_decision,
-            read_bridge_decision=bridge_store.read_agent_decision_prompt,
+            read_bridge_decision=(
+                bridge_store.read_agent_decision_prompt
+                if getattr(self.config, "agent_bridge", True)
+                else None
+            ),
         )
         self._decision_watcher.start()
         logger.info("决策助手已启动，模式: {}", mode)
@@ -938,13 +942,14 @@ class DiffGuardApp(ctk.CTk):
                 if getattr(opt, "key", "") == key:
                     chosen_text = getattr(opt, "text", "")
                     break
-            bridge_store.record_decision_feedback(
-                question=getattr(prompt, "question", ""),
-                chosen=key,
-                chosen_text=chosen_text,
-                recommendation=getattr(prompt, "recommendation", ""),
-                source=getattr(prompt, "source", "Unknown"),
-            )
+            if getattr(self.config, "agent_bridge", True):
+                bridge_store.record_decision_feedback(
+                    question=getattr(prompt, "question", ""),
+                    chosen=key,
+                    chosen_text=chosen_text,
+                    recommendation=getattr(prompt, "recommendation", ""),
+                    source=getattr(prompt, "source", "Unknown"),
+                )
             options_list = [
                 {
                     "key": getattr(o, "key", ""),
@@ -1512,6 +1517,7 @@ class DiffGuardApp(ctk.CTk):
             old_decision: str = getattr(
                 self.config, "decision_assistant", DecisionMode.OFF.value
             )
+            old_bridge: bool = getattr(self.config, "agent_bridge", True)
             self.config = new_config
             self.configure_theme(new_config.theme)
             if new_config.accent != self._accent:
@@ -1537,15 +1543,17 @@ class DiffGuardApp(ctk.CTk):
                         self._permission_alert.hide()
                     except Exception as exc:
                         logger.debug("隐藏权限浮窗失败: {}", exc)
-            # 决策助手模式热切换
+            # 决策助手模式热切换（agent_bridge 开关影响注入的桥接读取函数，一并重建）
             new_decision: str = getattr(
                 new_config, "decision_assistant", DecisionMode.OFF.value
             )
-            if new_decision != old_decision:
+            new_bridge: bool = getattr(new_config, "agent_bridge", True)
+            bridge_changed: bool = new_bridge != old_bridge
+            if new_decision != old_decision or bridge_changed:
                 if new_decision == DecisionMode.OFF.value:
                     self._stop_decision_watching()
                 else:
-                    if self._decision_watcher is not None:
+                    if self._decision_watcher is not None or bridge_changed:
                         self._stop_decision_watching()
                     self._start_decision_watching()
             # 动画开关热切换

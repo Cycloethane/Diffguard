@@ -69,10 +69,17 @@ def _get_status() -> dict:
         "decision_level": cfg.decision_level,
         "permission_monitor": cfg.permission_monitor,
         "auto_clipboard": cfg.auto_clipboard,
+        "agent_bridge": cfg.agent_bridge,
+        "agent_mcp": cfg.agent_mcp,
         "bridge_status": status,
         "recent_decision_count": len(recents) if "recents" in locals() else None,
         "last_decision": last_decision,
     }
+
+
+def _mcp_disabled_hint() -> str:
+    """agent_mcp 关闭时返回给 Agent 的提示文本。"""
+    return "[提示] Agent 决策请求通道已在 DiffGuard 设置中关闭（agent_mcp=False），本工具不可用。"
 
 
 def _review_diff(diff_text: str, title: str = "") -> str:
@@ -80,6 +87,8 @@ def _review_diff(diff_text: str, title: str = "") -> str:
     from core.reviewer import analyze_diff
 
     cfg = load_config()
+    if not cfg.agent_mcp:
+        return _mcp_disabled_hint()
     parts: list[str] = []
     for chunk in analyze_diff(diff_text or "", cfg):
         parts.append(chunk)
@@ -94,6 +103,8 @@ def _review_file(path: str, base_ref: str = "HEAD") -> str:
     import subprocess
 
     cfg = load_config()
+    if not cfg.agent_mcp:
+        return _mcp_disabled_hint()
     cwd = os.getcwd()
     try:
         proc = subprocess.run(
@@ -189,11 +200,13 @@ def _get_decision_stats() -> str:
         return f"[错误] 统计失败: {exc}"
 
 
-def _submit_decision(question: str, options: list, context: str = "") -> str:
+def _submit_decision(question: str, options: list, context: str = "", source: str = "MCP") -> str:
     """向 DiffGuard 提交待决策请求；DiffGuard 前台会弹出决策浮窗。"""
+    if not load_config().agent_mcp:
+        return _mcp_disabled_hint()
     if not isinstance(options, list) or len(options) < 2:
         return "[错误] 选项至少需要两个：options=[{'key':'A','text':'...'}, ...]"
-    ok = store.write_agent_decision(question, options, context)
+    ok = store.write_agent_decision(question, options, context, source=source or "MCP")
     if not ok:
         return "[错误] 写入决策请求失败。"
     return (
@@ -284,6 +297,10 @@ _TOOLS: list[dict] = [
                     "description": "选项列表，如 [{'key':'A','text':'...'},{'key':'B','text':'...'}]",
                 },
                 "context": {"type": "string", "description": "可选上下文"},
+                "source": {
+                    "type": "string",
+                    "description": "提交来源标识（如 'ZCode' / 'OpenCode'），默认 'MCP'",
+                },
             },
             "required": ["question", "options"],
         },
@@ -311,6 +328,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
         args.get("question", ""),
         args.get("options", []),
         args.get("context", ""),
+        str(args.get("source", "MCP") or "MCP"),
     ),
     "scan_risk": lambda args: _scan_risk(args.get("text", "")),
 }

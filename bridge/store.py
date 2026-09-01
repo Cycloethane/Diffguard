@@ -105,6 +105,7 @@ def write_agent_decision(
     question: str,
     options: list[dict],
     context: str = "",
+    source: str = "Agent",
 ) -> bool:
     """供 Agent 调用：写入一个待决策请求。
 
@@ -112,13 +113,14 @@ def write_agent_decision(
         question: 决策问题。
         options: [{"key": "A", "text": "..."}, ...]。
         context: 可选上下文说明。
+        source: 提交来源（如 "MCP" / "CLI" / "ZCode"），透传给 DiffGuard 浮窗。
     """
     path = _path("agent_decision_in.json")
     return _write_json(
         path,
         {
             "timestamp": datetime.now().isoformat(),
-            "source": "OpenCode",
+            "source": source,
             "question": question,
             "options": options,
             "context": context,

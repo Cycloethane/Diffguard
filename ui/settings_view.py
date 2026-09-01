@@ -303,22 +303,22 @@ class SettingsDialog(ctk.CTkToplevel):
         self.decision_overlay_switch.grid(row=r, column=0, sticky="w", pady=4)
         r += 1
 
-        # ---------------- OpenCode 集成 ----------------
+        # ---------------- Agent 集成（OpenCode / ZCode 等） ----------------
         ctk.CTkLabel(
-            scroll, text="OpenCode 集成", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+            scroll, text="Agent 集成（OpenCode / ZCode 等）", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
         ).grid(row=r, column=0, sticky="ew", pady=(10, 2))
         r += 1
 
-        self.opencode_bridge_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+        self.agent_bridge_switch: ctk.CTkSwitch = ctk.CTkSwitch(
             scroll, text="启用决策反馈闭环 (用户选择回写供 Agent 参考)"
         )
-        self.opencode_bridge_switch.grid(row=r, column=0, sticky="w", pady=4)
+        self.agent_bridge_switch.grid(row=r, column=0, sticky="w", pady=4)
         r += 1
 
-        self.opencode_mcp_switch: ctk.CTkSwitch = ctk.CTkSwitch(
-            scroll, text="启用 OpenCode 决策请求通道 (Agent 可提交决策)"
+        self.agent_mcp_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="启用 Agent 决策请求通道 (Agent 可提交决策)"
         )
-        self.opencode_mcp_switch.grid(row=r, column=0, sticky="w", pady=4)
+        self.agent_mcp_switch.grid(row=r, column=0, sticky="w", pady=4)
         r += 1
 
         # ---------------- 其它 ----------------
@@ -423,8 +423,8 @@ class SettingsDialog(ctk.CTkToplevel):
         )
         (self.decision_auto_switch.select() if self._config.decision_auto else self.decision_auto_switch.deselect())
         (self.decision_overlay_switch.select() if self._config.decision_show_overlay else self.decision_overlay_switch.deselect())
-        (self.opencode_bridge_switch.select() if getattr(self._config, "opencode_bridge", True) else self.opencode_bridge_switch.deselect())
-        (self.opencode_mcp_switch.select() if getattr(self._config, "opencode_mcp", True) else self.opencode_mcp_switch.deselect())
+        (self.agent_bridge_switch.select() if getattr(self._config, "agent_bridge", True) else self.agent_bridge_switch.deselect())
+        (self.agent_mcp_switch.select() if getattr(self._config, "agent_mcp", True) else self.agent_mcp_switch.deselect())
 
     def _on_save_clicked(self) -> None:
         """收集界面值、保存配置并关闭窗口。"""
@@ -454,8 +454,8 @@ class SettingsDialog(ctk.CTkToplevel):
             decision_level=level,
             decision_auto=bool(self.decision_auto_switch.get()),
             decision_show_overlay=bool(self.decision_overlay_switch.get()),
-            opencode_bridge=bool(self.opencode_bridge_switch.get()),
-            opencode_mcp=bool(self.opencode_mcp_switch.get()),
+            agent_bridge=bool(self.agent_bridge_switch.get()),
+            agent_mcp=bool(self.agent_mcp_switch.get()),
             animations=bool(self.animations_switch.get()),
         )
         try:

@@ -114,8 +114,8 @@ class Config(BaseSettings):
         decision_show_overlay: 前台模式是否显示决策徽标。
         decision_auto: 检测到决策是否自动调用 AI 解析（ask 模式下忽略）。
         decision_max_len: 送入 AI 解析的原始文本长度上限。
-        opencode_bridge: 是否启用 OpenCode 桥接（决策反馈回写）。
-        opencode_mcp: 是否启用 OpenCode 集成（Agent 决策请求精确通道）。
+        agent_bridge: 是否启用 Agent 决策反馈闭环（用户选择回写供 Agent 参考）。
+        agent_mcp: 是否启用 Agent 决策请求通道（MCP/桥接文件提交决策）。
         animations: 是否启用界面动画（false 时所有动画立即完成）。
     """
 
@@ -137,8 +137,8 @@ class Config(BaseSettings):
     decision_show_overlay: bool = True
     decision_auto: bool = True
     decision_max_len: int = 4000
-    opencode_bridge: bool = True
-    opencode_mcp: bool = True
+    agent_bridge: bool = True
+    agent_mcp: bool = True
     animations: bool = True
 
     model_config = SettingsConfigDict(
@@ -147,13 +147,24 @@ class Config(BaseSettings):
     )
 
 
+# 旧配置键 → 新键（客户端中立化改名，载入时自动迁移）
+_LEGACY_KEY_MAP: dict[str, str] = {
+    "opencode_bridge": "agent_bridge",
+    "opencode_mcp": "agent_mcp",
+}
+
+
 def config_path() -> Path:
     """返回配置文件完整路径。"""
     return Path(platformdirs.user_config_dir("DiffGuard")) / "config.json"
 
 
 def load_config() -> Config:
-    """从磁盘加载配置；文件不存在或解析失败时返回默认配置。"""
+    """从磁盘加载配置；文件不存在或解析失败时返回默认配置。
+
+    含旧键（opencode_bridge / opencode_mcp）的配置自动迁移为
+    agent_bridge / agent_mcp 并回写磁盘。
+    """
     path: Path = config_path()
     data: dict[str, Any] = {}
     try:
@@ -164,7 +175,18 @@ def load_config() -> Config:
             logger.info("配置文件不存在，使用默认配置")
     except (OSError, json.JSONDecodeError) as exc:
         logger.error("读取配置文件失败，使用默认配置: {}", exc)
-    return Config(**data)
+        return Config()
+
+    migrated: bool = False
+    for old_key, new_key in _LEGACY_KEY_MAP.items():
+        if old_key in data and new_key not in data:
+            data[new_key] = data.pop(old_key)
+            migrated = True
+            logger.info("配置键迁移: {} -> {}", old_key, new_key)
+    cfg: Config = Config(**data)
+    if migrated:
+        save_config(cfg)
+    return cfg
 
 
 def save_config(cfg: Config) -> None:
