@@ -71,7 +71,7 @@ def main() -> None:
     # 首次配置向导（未配置 API Key 且首次运行时弹出）
     if not is_configured(config):
         logger.info("检测到未配置 API Key，弹出首次配置向导")
-        app.after(500, lambda: FirstRunWizard(app, on_done=lambda c: app._on_wizard_done(c), config=config))
+        app.after(500, lambda: FirstRunWizard(app, on_done=lambda c: app.on_wizard_done(c), config=config))
 
     # 决策助手首启引导（仅弹一次）
     elif _needs_decision_first_run():

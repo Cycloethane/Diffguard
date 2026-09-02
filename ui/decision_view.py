@@ -29,7 +29,7 @@ class DecisionView(ctk.CTkFrame):
         status.grid_columnconfigure(0, weight=1)
 
         mode: str = getattr(app.config, "decision_assistant", "off")
-        pending: bool = bool(getattr(app, "_decision_pending", False))
+        pending: bool = bool(getattr(app, "decision_pending", False))
         stats = decision_stats(100)
         info = (
             f"模式：{mode}   ·   待处理决策：{'有' if pending else '无'}   ·   "

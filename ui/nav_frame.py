@@ -90,7 +90,7 @@ class NavFrame(ctk.CTkFrame):
             self._buttons[key] = btn
             # 悬停提示
             try:
-                from ui.app import _bind_tooltip as _bind
+                from ui.widgets import bind_tooltip as _bind
 
                 _bind(btn, title)
             except Exception:
