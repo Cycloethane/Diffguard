@@ -534,7 +534,6 @@ class DiffGuardApp(ctk.CTk):
         hover: str = accent(accent_name, light=True)[1]
         try:
             self.review_button.configure(fg_color=primary, hover_color=hover)
-            self.review_flow.apply_accent(primary, hover)
         except Exception:
             pass
 

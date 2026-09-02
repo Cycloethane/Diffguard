@@ -89,9 +89,6 @@ class ReviewModule:
         report_scroll_y.grid(row=0, column=1, sticky="ns")
         report_textbox.configure(yscrollcommand=report_scroll_y.set)
 
-        # 空状态引导(未载入 diff 时,覆盖在模块区左上角,与旧实现一致)
-        guide = self._build_guide(container, app)
-
         # 仪表盘(最后构建,确保位于 top 内)
         dash_score, dash_level, dash_count, dash_points = self._build_dashboard(top, app)
 
@@ -103,13 +100,12 @@ class ReviewModule:
             dash_level=dash_level,
             dash_count=dash_count,
             dash_points=dash_points,
-            guide=guide,
         )
 
     # ------------------------------------------------------------------
     @staticmethod
     def _build_dashboard(parent: Any, app: Any) -> tuple[Any, Any, Any, Any]:
-        """构建顶部风险仪表盘卡,返回四个数据标签。"""
+        """构建顶部风险仪表盘卡(右端嵌吉祥物头像),返回四个数据标签。"""
         dash: ctk.CTkFrame = ctk.CTkFrame(parent, corner_radius=12, fg_color="transparent")
         dash.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         dash.grid_columnconfigure(3, weight=1)
@@ -144,68 +140,26 @@ class ReviewModule:
             dash, text="主要风险点", font=ctk.CTkFont(size=12), text_color=_FG_MUTED
         ).grid(row=0, column=3, sticky="nw", padx=12, pady=(8, 0))
         dash_points: ctk.CTkLabel = ctk.CTkLabel(
-            dash, text="尚未加载 diff", font=ctk.CTkFont(size=13), anchor="w", justify="left"
+            dash, font=ctk.CTkFont(size=13), anchor="w", justify="left",
+            text="欢迎使用 DiffGuard —— 复制 git diff 到剪贴板即可自动载入\n"
+                 "Ctrl+V 载入 · Ctrl+Enter 审查 · Ctrl+S 保存 · Ctrl+E 导出",
         )
         dash_points.grid(row=1, column=3, sticky="new", padx=12, pady=(0, 6))
+
+        # 右端吉祥物头像(空态欢迎感,载入后保留)
+        try:
+            from pathlib import Path
+
+            from PIL import Image
+
+            mascot_path = Path(__file__).resolve().parent.parent.parent / "assets" / "mascot_dash.png"
+            if mascot_path.is_file():
+                pil = Image.open(mascot_path)
+                avatar = ctk.CTkImage(light_image=pil, size=pil.size)
+                ctk.CTkLabel(dash, text="", image=avatar).grid(
+                    row=0, column=4, rowspan=2, sticky="e", padx=(0, 10)
+                )
+        except Exception:
+            pass
         return dash_score, dash_level, dash_count, dash_points
 
-    @staticmethod
-    def _build_guide(parent: Any, app: Any) -> Any:
-        """空状态欢迎卡：坐姿吉祥物 + 快捷键指引（未载入 diff 时）。"""
-        from pathlib import Path
-
-        from ui.theme import frost
-
-        accent_color: str = accent_primary(getattr(app.config, "accent", "blue"), light=True)
-        accent_hover: str = accent(getattr(app.config, "accent", "blue"), light=True)[1]
-        guide = ctk.CTkFrame(parent, fg_color=frost(True), corner_radius=14)
-        guide.grid(row=0, column=0, sticky="nw", padx=8, pady=8)
-
-        row = ctk.CTkFrame(guide, fg_color="transparent")
-        row.pack(padx=14, pady=12)
-
-        # 左：坐姿吉祥物
-        mascot_path = Path(__file__).resolve().parent.parent.parent / "assets" / "mascot_guide.png"
-        if mascot_path.is_file():
-            try:
-                from PIL import Image
-
-                pil = Image.open(mascot_path)
-                mascot_img = ctk.CTkImage(light_image=pil, size=(175, 240))
-                ctk.CTkLabel(row, text="", image=mascot_img).pack(side="left", padx=(0, 18))
-            except Exception:
-                pass
-
-        # 右：标题 / 说明 / 快捷键 / 按钮
-        col = ctk.CTkFrame(row, fg_color="transparent")
-        col.pack(side="left", fill="y")
-        ctk.CTkLabel(
-            col, text="欢迎使用 DiffGuard",
-            font=ctk.CTkFont(size=19, weight="bold"),
-            text_color=accent_color,
-        ).pack(anchor="w", pady=(16, 2))
-        ctk.CTkLabel(
-            col, text="复制 git diff 到剪贴板即可自动载入",
-            font=ctk.CTkFont(size=12), text_color="#4B5563",
-        ).pack(anchor="w", pady=(0, 6))
-        for key, desc in (
-            ("Ctrl+V", "载入剪贴板 diff"),
-            ("Ctrl+Enter", "开始 AI 审查"),
-            ("Ctrl+S", "保存到历史"),
-        ):
-            hint = ctk.CTkFrame(col, fg_color="transparent")
-            hint.pack(anchor="w", pady=1)
-            ctk.CTkLabel(
-                hint, text=key, font=ctk.CTkFont(size=11, weight="bold"),
-                text_color="#3A4A5A",
-            ).pack(side="left")
-            ctk.CTkLabel(
-                hint, text=f"  {desc}", font=ctk.CTkFont(size=11),
-                text_color=_FG_MUTED,
-            ).pack(side="left")
-        ctk.CTkButton(
-            col, text="打开设置", command=app.open_settings,
-            fg_color=accent_color, hover_color=accent_hover,
-            width=118, height=30, corner_radius=8,
-        ).pack(anchor="w", pady=(10, 4))
-        return guide

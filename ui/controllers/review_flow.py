@@ -97,7 +97,6 @@ class ReviewFlow:
         self._dash_level: Optional[ctk.CTkLabel] = None
         self._dash_count: Optional[ctk.CTkLabel] = None
         self._dash_points: Optional[ctk.CTkLabel] = None
-        self._guide: Optional[ctk.CTkFrame] = None
         # 流式审查队列与轮询
         self._stream_queue: "queue.Queue[tuple[str, Optional[str]]]" = queue.Queue()
         self._stream_poller = QueuePoller(
@@ -117,7 +116,6 @@ class ReviewFlow:
         dash_level: ctk.CTkLabel,
         dash_count: ctk.CTkLabel,
         dash_points: ctk.CTkLabel,
-        guide: Optional[ctk.CTkFrame] = None,
     ) -> None:
         """绑定审查模块控件并恢复当前文档展示。"""
         self._diff_textbox = diff_textbox
@@ -127,7 +125,6 @@ class ReviewFlow:
         self._dash_level = dash_level
         self._dash_count = dash_count
         self._dash_points = dash_points
-        self._guide = guide
         self.define_text_tags()
         # 模块重建后恢复已有内容(如从历史恢复后切走再切回)
         if self.current_diff:
@@ -147,7 +144,6 @@ class ReviewFlow:
         self._dash_level = None
         self._dash_count = None
         self._dash_points = None
-        self._guide = None
 
     @property
     def controls_ready(self) -> bool:
@@ -209,25 +205,6 @@ class ReviewFlow:
         if self.controls_ready:
             self._populate_file_list(self.current_files)
 
-    def apply_accent(self, primary: str, hover: str) -> None:
-        """强调色切换后刷新引导卡按钮配色(递归查找嵌套按钮)。"""
-        if self._guide is None:
-            return
-
-        def _walk(widget: Any) -> None:
-            try:
-                for child in widget.winfo_children():
-                    if isinstance(child, ctk.CTkButton):
-                        child.configure(fg_color=primary, hover_color=hover)
-                    _walk(child)
-            except Exception:
-                pass
-
-        try:
-            _walk(self._guide)
-        except Exception:
-            pass
-
     # ------------------------------------------------------------------
     # diff 载入
     # ------------------------------------------------------------------
@@ -254,11 +231,6 @@ class ReviewFlow:
         files, status = parse_diff_with_status(self.current_diff)
         self.current_files = files
         self.current_report = ""
-        if self._guide is not None:
-            try:
-                self._guide.grid_remove()
-            except Exception:
-                pass
         if not self.controls_ready:
             return
         self._populate_file_list(files)
@@ -284,11 +256,6 @@ class ReviewFlow:
             self.current_diff = record.raw_diff
             self.current_files = parse_diff(record.raw_diff)
             self.current_report = record.ai_report or ""
-            if self._guide is not None:
-                try:
-                    self._guide.grid_remove()
-                except Exception:
-                    pass
             self._populate_file_list(self.current_files)
             self._render_raw_diff(record.raw_diff)
             self._clear_report()
