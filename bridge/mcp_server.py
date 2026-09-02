@@ -41,7 +41,7 @@ from models.permission_history import get_recent_permissions
 from models.decision_history import get_recent_decisions, decision_stats
 
 _PROTOCOL_VERSION: str = "2024-11-05"
-_SERVER_VERSION: str = "0.3.0"
+_SERVER_VERSION: str = "1.0.0"
 
 
 # ----------------------------------------------------------------------

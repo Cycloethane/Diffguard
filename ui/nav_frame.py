@@ -223,7 +223,7 @@ class NavFrame(ctk.CTkFrame):
                 text_color=text_color(self.light),
             ).grid(row=1, column=0, pady=(0, 2))
             ctk.CTkLabel(
-                dlg, text="你的 AI 编程守门人 · v0.3.0",
+                dlg, text="你的 AI 编程守门人 · v1.0.0",
                 font=ctk.CTkFont(size=13), text_color=text_muted(self.light),
             ).grid(row=2, column=0, pady=(0, 2))
             ctk.CTkLabel(
