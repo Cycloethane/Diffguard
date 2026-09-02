@@ -90,7 +90,7 @@ zcode/ 目录是合规的 ZCode 插件(`.zcode-plugin/plugin.json`):
 - 本地安装:ZCode → Settings → Plugin Management → Discover → `+` → 添加本仓库根目录(含 `marketplace.json`),安装 `diffguard-zcode`;
 - 推送 GitHub 后,把仓库地址作为 marketplace 添加即可随仓库更新。
 
-插件提供:diffguard MCP server(9 工具)、`/diffguard:review|scan|status|decide` 斜杠命令、DiffGuard Skill、**PreToolUse 风险扫描钩子(高危 Bash/Write/Edit 阻断)**与 **PermissionRequest 权限审计钩子**。
+插件提供:diffguard MCP server(9 工具)、`/diffguard:review|scan|status|decide` 斜杠命令、DiffGuard Skill、**PreToolUse 风险扫描钩子(高危 Bash/Write/Edit 阻断)**、**AskUserQuestion 询问镜像钩子(AI 逐项分析选项利弊/风险并推荐,与 ZCode 询问框并行)**、**PermissionRequest 权限钩子(评分审计 + 高风险托盘提醒 + 前台小窗权限栏)**。
 
 **方式二:CLI 安装器(写入配置,最可靠)**
 

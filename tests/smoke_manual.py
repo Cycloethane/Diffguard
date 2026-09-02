@@ -74,7 +74,7 @@ def main() -> int:
     payload = app.overlay_payload()
     check(
         "overlay payload 字段齐全",
-        set(payload) == {"status", "file_count", "score", "contributions", "decision_pending"},
+        set(payload) == {"status", "file_count", "score", "contributions", "decision_pending", "permission"},
     )
 
     # 5. 配置热切换(关开决策监听)

@@ -58,8 +58,12 @@ def main() -> None:
         from bridge.hooks_runner import permission_request_main
 
         sys.exit(permission_request_main())
+    elif command == "ask_user_question":
+        from bridge.hooks_runner import ask_user_question_main
+
+        sys.exit(ask_user_question_main())
     else:
-        sys.stderr.write("未知子命令: {}（可用: mcp / pre_tool_use / permission_request）\n".format(command))
+        sys.stderr.write("未知子命令: {}（可用: mcp / pre_tool_use / permission_request / ask_user_question）\n".format(command))
         sys.exit(1)
 
 

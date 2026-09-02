@@ -100,6 +100,7 @@ class DiffGuardApp(ctk.CTk):
         self.watchers.start_all()
         self._sync_flow_pollers()
         self._clipboard_poller.start()
+        self.permission_flow.start_bridge()  # ZCode 钩子权限事件(与 UIA 监听无关,常启)
         self._bind_shortcuts()
         if config.check_updates:
             self.after(3000, self._check_updates_background)
@@ -600,6 +601,7 @@ class DiffGuardApp(ctk.CTk):
             "score": score,
             "contributions": contributions,
             "decision_pending": self.decision_flow.pending,
+            "permission": self.permission_flow.overlay_permission(),
         }
 
     def open_decision_alert(self, _master: Any) -> None:
@@ -669,6 +671,7 @@ class DiffGuardApp(ctk.CTk):
         self._clipboard_poller.stop()
         self._tray_poller.stop()
         self.permission_flow.stop()
+        self.permission_flow.stop_bridge()
         self.decision_flow.stop()
         self.watchers.shutdown()
         if self._overlay is not None:

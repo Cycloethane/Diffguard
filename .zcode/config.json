@@ -31,6 +31,22 @@
               "timeoutMs": 15000
             }
           ]
+        },
+        {
+          "matcher": "AskUserQuestion",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "python",
+              "enabled": true,
+              "statusMessage": "DiffGuard 决策分析",
+              "args": [
+                "${ZCODE_PROJECT_DIR}/zcode/bootstrap.py",
+                "ask_user_question"
+              ],
+              "timeoutMs": 8000
+            }
+          ]
         }
       ],
       "PermissionRequest": [

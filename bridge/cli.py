@@ -316,6 +316,20 @@ def _add_diffguard_entries(config: dict, python_exe: str, cwd_dir: str) -> None:
             ],
         }
     )
+    events.setdefault("PreToolUse", []).append(
+        {
+            "matcher": "AskUserQuestion",
+            "hooks": [
+                {
+                    "type": "process",
+                    "command": python_exe,
+                    "args": [_BOOTSTRAP, "ask_user_question"],
+                    "timeoutMs": 8000,
+                    "statusMessage": "DiffGuard 决策分析",
+                }
+            ],
+        }
+    )
     events.setdefault("PermissionRequest", []).append(
         {
             "hooks": [

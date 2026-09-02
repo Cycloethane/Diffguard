@@ -8,6 +8,7 @@
     decision_feedback.json  决策反馈（用户已作出的选择），Agent 可读取了解偏好。
     agent_decision_in.json  Agent 写入的"待决策"请求（可选的精确通道，
                            替代剪贴板猜测），格式见 write_agent_decision()。
+    permission_events.json  最近权限事件（ZCode 钩子写入，前台提醒/小窗展示）。
     report_requests.json    审查请求队列（Agent 请求 DiffGuard 审查 diff）。
     report_results.json     审查结果（DiffGuard 完成审查后写回）。
     status.json             当前状态（监听开关、模式等）。
@@ -177,6 +178,53 @@ def read_agent_decision_prompt():
 
 
 # ----------------------------------------------------------------------
+# 权限事件（ZCode 钩子 → DiffGuard 前台提醒/小窗展示）
+# ----------------------------------------------------------------------
+def write_permission_event(
+    source: str,
+    tool: str,
+    target: str,
+    score: int,
+    level: str,
+    findings: list,
+) -> Optional[dict]:
+    """写入一条最近的权限事件（seq 递增，保留最近 20 条环形缓存）。
+
+    供 DiffGuard 前台轮询：高风险弹托盘提醒、小窗权限栏展示。
+    """
+    path = _path("permission_events.json")
+    data = _read_json(path, {"seq": 0, "latest": None, "recent": []})
+    if not isinstance(data, dict):
+        data = {"seq": 0, "latest": None, "recent": []}
+    seq: int = int(data.get("seq", 0)) + 1
+    event = {
+        "seq": seq,
+        "timestamp": datetime.now().isoformat(),
+        "source": source,
+        "tool": tool,
+        "target": target[:120],
+        "score": int(score),
+        "level": level,
+        "findings": [str(f) for f in findings][:8],
+    }
+    data["seq"] = seq
+    data["latest"] = event
+    recent = data.get("recent") or []
+    if not isinstance(recent, list):
+        recent = []
+    recent.append(event)
+    data["recent"] = recent[-20:]
+    return event if _write_json(path, data) else None
+
+
+def read_permission_event() -> Optional[dict]:
+    """读取最近一条权限事件（无则 None）。"""
+    data = _read_json(_path("permission_events.json"), {})
+    latest = data.get("latest") if isinstance(data, dict) else None
+    return latest if isinstance(latest, dict) else None
+
+
+# ----------------------------------------------------------------------
 # 审查请求 / 结果（功能1/2：Agent 请求审查，DiffGuard 返回结果）
 # ----------------------------------------------------------------------
 def submit_review_request(diff_text: str, title: str = "") -> Optional[int]:
@@ -264,6 +312,7 @@ def clear_all_bridge_files() -> None:
     for name in (
         "decision_feedback.json",
         "agent_decision_in.json",
+        "permission_events.json",
         "report_requests.json",
         "report_results.json",
         "status.json",

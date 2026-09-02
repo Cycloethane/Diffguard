@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""ZCode hooks 执行器:PreToolUse 风险扫描与 PermissionRequest 审计。
+"""ZCode hooks 执行器:PreToolUse 风险扫描、PermissionRequest 审计与提醒、
+AskUserQuestion 决策镜像。
 
 由 zcode/bootstrap.py 以进程方式拉起(hooks.json 的 process 型钩子),
 stdin 收到事件 JSON,退出码表达决策:
 
-    0   放行(默认;审计失败也不阻断)
+    0   放行(默认;审计/镜像失败也不阻断)
     2   阻断(仅 PreToolUse 且本地风险评分 level == high)
 
 stdout 保持为空(输出协议要求为空或严格 JSON),提示信息写 stderr。
@@ -113,7 +114,7 @@ def pre_tool_use_main() -> int:
 
 
 def permission_request_main() -> int:
-    """PermissionRequest 钩子:把权限请求写入权限审计库(仅记录,不决策)。"""
+    """PermissionRequest 钩子:权限请求评分入库 + 写桥接事件(前台提醒),不决策。"""
     from models.permission_history import save_permission
     from models.permission_prompt import PermissionPrompt, PromptAction, PromptType
 
@@ -135,21 +136,104 @@ def permission_request_main() -> int:
         prompt.risk_score = int(res.get("score", 0))
         prompt.breakdown = [str(f) for f in res.get("findings", [])]
         save_permission(prompt)
+
+        # 桥接事件:供 DiffGuard 前台轮询(高风险托盘提醒 + 小窗权限栏)
+        try:
+            from bridge.store import write_permission_event
+
+            target = _brief_target(tool_name, tool_input)
+            write_permission_event(
+                source="ZCode",
+                tool=tool_name or "Unknown",
+                target=target,
+                score=prompt.risk_score,
+                level=str(res.get("level", "low")),
+                findings=prompt.breakdown,
+            )
+        except Exception:
+            pass
     except Exception:
         # 审计失败不影响权限流程
         pass
     return 0
 
 
+def _brief_target(tool_name: str, tool_input: dict) -> str:
+    """提取权限目标的简短描述(路径或命令前 80 字符)。"""
+    if tool_name in _BASH_TOOLS:
+        for field in _BASH_TEXT_FIELDS:
+            value = tool_input.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:80]
+    for field in _FILE_PATH_FIELDS:
+        value = tool_input.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:80]
+    return ""
+
+
+def ask_user_question_main() -> int:
+    """AskUserQuestion 钩子:把 ZCode 原生询问的问题与选项镜像到 DiffGuard。
+
+    写入 agent_decision_in.json(source="ZCode"),DecisionWatcher 桥接通道
+    消费后弹决策浮窗:AI 逐项分析选项利弊与风险并给推荐,与 ZCode 原生
+    询问框并行展示;用户选择会写入决策反馈,Agent 可经 MCP 读取。
+
+    多问题时取第一个作为决策主体,其余摘要在 context 中。
+    """
+    from bridge.store import write_agent_decision
+
+    tool_name, tool_input = _parse_payload(sys.stdin.read())
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list) or not questions:
+        return 0
+    first = questions[0] if isinstance(questions[0], dict) else {}
+    question = str(first.get("question", "")).strip()
+    options: list[dict] = []
+    for i, opt in enumerate(first.get("options") or []):
+        if not isinstance(opt, dict):
+            continue
+        label = str(opt.get("label", "")).strip()
+        desc = str(opt.get("description", "")).strip()
+        key = label or chr(ord("A") + i)
+        text = f"{label}——{desc}" if label and desc else (desc or label)
+        if text:
+            options.append({"key": key[:12], "text": text[:160]})
+    if not question or len(options) < 2:
+        return 0
+    extra = ""
+    if len(questions) > 1:
+        rests = []
+        for q in questions[1:]:
+            if isinstance(q, dict) and q.get("question"):
+                rests.append(str(q.get("question")))
+        if rests:
+            extra = "另有待决问题:" + ";".join(rests[:3])
+    try:
+        write_agent_decision(
+            question=question[:400],
+            options=options[:8],
+            context=f"ZCode Agent 向用户发起的原生询问(自动镜像){(';' + extra) if extra else ''}",
+            source="ZCode",
+        )
+    except Exception:
+        pass
+    return 0
+
+
 def main() -> None:
-    """命令行入口:python -m bridge.hooks_runner <pre_tool_use|permission_request>"""
+    """命令行入口:python -m bridge.hooks_runner <子命令>"""
     command: str = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "pre_tool_use":
         sys.exit(pre_tool_use_main())
     elif command == "permission_request":
         sys.exit(permission_request_main())
+    elif command == "ask_user_question":
+        sys.exit(ask_user_question_main())
     else:
-        sys.stderr.write("用法: python -m bridge.hooks_runner <pre_tool_use|permission_request>\n")
+        sys.stderr.write(
+            "用法: python -m bridge.hooks_runner <pre_tool_use|permission_request|ask_user_question>\n"
+        )
         sys.exit(1)
 
 

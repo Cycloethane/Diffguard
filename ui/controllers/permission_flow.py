@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""权限流程控制器:自动放行判定、托盘通知、浮窗展示与决策回写。
+"""权限流程控制器:自动放行判定、托盘通知、浮窗展示、决策回写,
+以及 ZCode 钩子权限事件的桥接轮询(高风险托盘提醒 + 前台小窗权限栏)。
 
 从 app.py 抽出;持久化与 UIA 回写沿用原有 models/core 接口。
 """
 
 import queue
 import threading
-from typing import Any
+import time
+from typing import Any, Optional
 
 from loguru import logger
 
@@ -15,6 +17,10 @@ from models.permission_history import save_permission, update_permission_decisio
 from ui.notify import tray_notify
 from ui.permission_alert import PermissionAlert
 from ui.poller import QueuePoller
+
+# 桥接权限事件轮询间隔(秒)与小窗展示保留时长(秒)
+_BRIDGE_POLL_INTERVAL_MS: int = 1500
+_OVERLAY_EVENT_TTL: float = 15.0
 
 
 class PermissionFlow:
@@ -29,6 +35,10 @@ class PermissionFlow:
             pre_poll=self._refresh_online_state,
             label="permission",
         )
+        # ZCode 钩子桥接事件(独立于 UIA 监听,始终轮询)
+        self.recent_bridge_event: Optional[dict] = None
+        self._last_bridge_seq: int = 0
+        self._bridge_after_id: Optional[str] = None
 
     # ------------------------------------------------------------------
     # 入口(watcher 回调,后台线程执行)
@@ -50,6 +60,89 @@ class PermissionFlow:
         manager = self.app.watchers
         if manager.permission_watcher is not None:
             self.app.perm_watcher_online = manager.perm_watcher_online
+
+    # ------------------------------------------------------------------
+    # ZCode 钩子桥接事件(文件轮询,始终开启)
+    # ------------------------------------------------------------------
+    def start_bridge(self) -> None:
+        """启动桥接权限事件轮询(幂等);高风险事件触发托盘提醒。"""
+        if self._bridge_after_id is not None:
+            return
+
+        def _tick() -> None:
+            self._bridge_after_id = self.app.after(
+                _BRIDGE_POLL_INTERVAL_MS, _tick
+            )
+            self.poll_bridge_events()
+
+        _tick()
+
+    def stop_bridge(self) -> None:
+        """停止桥接轮询。"""
+        if self._bridge_after_id is not None:
+            try:
+                self.app.after_cancel(self._bridge_after_id)
+            except Exception:
+                pass
+            self._bridge_after_id = None
+
+    def poll_bridge_events(self) -> None:
+        """轮询 permission_events.json;新事件 → 状态栏 + 高风险托盘提醒。"""
+        try:
+            from bridge import store as bridge_store
+
+            event = bridge_store.read_permission_event()
+        except Exception as exc:
+            logger.debug("读取权限桥接事件失败: {}", exc)
+            return
+        if not isinstance(event, dict):
+            return
+        seq = int(event.get("seq", 0) or 0)
+        if seq <= self._last_bridge_seq:
+            return
+        self._last_bridge_seq = seq
+        event["_received_at"] = time.time()
+        self.recent_bridge_event = event
+
+        tool = str(event.get("tool", ""))
+        score = int(event.get("score", 0) or 0)
+        level = str(event.get("level", "low"))
+        target = str(event.get("target", "") or "")
+        mark = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(level, "⚪")
+        self.app.set_status(f"{mark} ZCode 权限请求: {tool}（风险 {score}/100）{('· ' + target[:40]) if target else ''}")
+
+        if level == "high":
+            try:
+                self.app.bell()
+            except Exception:
+                pass
+            findings = "、".join(str(f) for f in event.get("findings", [])) or "无明细"
+            threading.Thread(
+                target=tray_notify,
+                args=(
+                    "DiffGuard 高风险权限请求（ZCode）",
+                    f"{tool} {target[:60]}\n风险 {score}/100：{findings}\n请在 ZCode 弹窗中谨慎确认!",
+                    3,
+                ),
+                daemon=True,
+            ).start()
+
+    def overlay_permission(self) -> Optional[dict]:
+        """供前台小窗展示的最近权限事件(超时自动消失)。"""
+        event = self.recent_bridge_event
+        if not event:
+            return None
+        age = time.time() - float(event.get("_received_at", 0) or 0)
+        if age > _OVERLAY_EVENT_TTL:
+            return None
+        return {
+            "source": str(event.get("source", "ZCode")),
+            "tool": str(event.get("tool", "")),
+            "target": str(event.get("target", "")),
+            "score": int(event.get("score", 0) or 0),
+            "level": str(event.get("level", "low")),
+            "age": round(age, 1),
+        }
 
     # ------------------------------------------------------------------
     # 处理

@@ -12,6 +12,18 @@
             "statusMessage": "DiffGuard 风险扫描"
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python",
+            "args": ["${ZCODE_PLUGIN_ROOT}/bootstrap.py", "ask_user_question"],
+            "timeoutMs": 8000,
+            "statusMessage": "DiffGuard 决策分析"
+          }
+        ]
       }
     ],
     "PermissionRequest": [

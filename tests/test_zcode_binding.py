@@ -102,9 +102,9 @@ def test_pre_tool_use_garbage_stdin(monkeypatch) -> None:
 
 
 # ----------------------------------------------------------------------
-# PermissionRequest(审计入库)
+# PermissionRequest(审计入库 + 桥接事件)
 # ----------------------------------------------------------------------
-def test_permission_request_records_audit(monkeypatch, db_tmp) -> None:
+def test_permission_request_records_audit(monkeypatch, db_tmp, bridge_tmp) -> None:
     from models.permission_history import get_recent_permissions
 
     monkeypatch.setattr(
@@ -116,6 +116,99 @@ def test_permission_request_records_audit(monkeypatch, db_tmp) -> None:
     assert len(recs) == 1
     assert recs[0].source == "ZCode"
     assert recs[0].prompt_type == "command_exec"
+
+
+def test_permission_request_writes_bridge_event(monkeypatch, db_tmp, bridge_tmp) -> None:
+    from bridge import store
+
+    monkeypatch.setattr(
+        "sys.stdin",
+        _FakeStdin(
+            json.dumps(
+                {"tool_name": "Bash", "tool_input": {"command": "cat ~/.ssh/id_rsa && password = \"abcdefgh123\""}}
+            )
+        ),
+    )
+    assert permission_request_main() == 0
+    event = store.read_permission_event()
+    assert event is not None
+    assert event["source"] == "ZCode"
+    assert event["tool"] == "Bash"
+    assert event["score"] >= 60
+    assert event["level"] == "high"
+    assert event["target"].startswith("cat")
+
+
+def test_permission_event_seq_and_ring(bridge_tmp) -> None:
+    from bridge import store
+
+    e1 = store.write_permission_event("ZCode", "Bash", "ls", 10, "low", [])
+    e2 = store.write_permission_event("ZCode", "WebFetch", "https://x", 20, "low", [])
+    assert e1["seq"] == 1 and e2["seq"] == 2
+    assert store.read_permission_event()["seq"] == 2
+    for i in range(25):
+        store.write_permission_event("ZCode", "Bash", f"c{i}", 0, "low", [])
+    import json as _json
+
+    data = _json.loads((bridge_tmp / "permission_events.json").read_text(encoding="utf-8"))
+    assert len(data["recent"]) == 20  # 环形上限
+    assert data["seq"] == 27
+
+
+# ----------------------------------------------------------------------
+# AskUserQuestion(询问镜像 → 决策通道)
+# ----------------------------------------------------------------------
+def test_ask_user_question_mirrors_to_bridge(monkeypatch, bridge_tmp) -> None:
+    from bridge import store
+    from bridge.hooks_runner import ask_user_question_main
+
+    payload = {
+        "tool_name": "AskUserQuestion",
+        "tool_input": {
+            "questions": [
+                {
+                    "question": "部署方式选哪个?",
+                    "options": [
+                        {"label": "Docker", "description": "容器化,环境一致"},
+                        {"label": "裸机", "description": "直接安装,性能最好"},
+                        {"label": "K8s", "description": "编排,弹性伸缩"},
+                    ],
+                },
+                {
+                    "question": "第二个问题(应进 context 摘要)?",
+                    "options": [
+                        {"label": "甲", "description": "x"}, {"label": "乙", "description": "y"}
+                    ],
+                },
+            ]
+        },
+    }
+    monkeypatch.setattr("sys.stdin", _FakeStdin(json.dumps(payload)))
+    assert ask_user_question_main() == 0
+
+    data = store.read_agent_decision()
+    assert data is not None
+    assert data["source"] == "ZCode"
+    assert data["question"] == "部署方式选哪个?"
+    assert len(data["options"]) == 3
+    assert data["options"][0]["key"] == "Docker"
+    assert "容器化" in data["options"][0]["text"]
+    assert "第二个问题" in data["context"]  # 多问题摘进 context
+
+    # 经消费函数构造 DecisionPrompt 供决策浮窗
+    prompt = store.read_agent_decision_prompt()
+    assert prompt is not None
+    assert prompt.source == "ZCode"
+    assert len(prompt.options) == 3
+
+
+def test_ask_user_question_invalid_input_noop(monkeypatch, bridge_tmp) -> None:
+    from bridge import store
+    from bridge.hooks_runner import ask_user_question_main
+
+    monkeypatch.setattr("sys.stdin", _FakeStdin(json.dumps({"tool_name": "AskUserQuestion", "tool_input": {}})))
+    assert ask_user_question_main() == 0
+    assert store.read_agent_decision() is None  # 非法输入不写
 
 
 # ----------------------------------------------------------------------
@@ -140,10 +233,12 @@ def test_install_uninstall_zcode_workspace(tmp_path, monkeypatch, capsys) -> Non
     marker = tmp_path / "appdata" / "DiffGuard" / "source_path.txt"
     assert marker.is_file()
 
-    # 幂等:重复安装不产生重复条目
+    # 幂等:重复安装不产生重复条目(风险扫描 + 询问镜像两组)
     assert cli.main(["install-zcode", "--dir", str(target), "--scope", "workspace"]) == 0
     config = json.loads((target / ".zcode" / "config.json").read_text(encoding="utf-8"))
-    assert len(config["hooks"]["events"]["PreToolUse"]) == 1
+    assert len(config["hooks"]["events"]["PreToolUse"]) == 2
+    matchers = {g["matcher"] for g in config["hooks"]["events"]["PreToolUse"]}
+    assert matchers == {"Bash|Write|Edit|ApplyPatch", "AskUserQuestion"}
 
     # 与既有配置合并:预置第三方条目不被破坏
     config["mcp"]["servers"]["other"] = {"type": "stdio", "command": "x"}
@@ -152,7 +247,7 @@ def test_install_uninstall_zcode_workspace(tmp_path, monkeypatch, capsys) -> Non
     assert cli.main(["install-zcode", "--dir", str(target), "--scope", "workspace"]) == 0
     config = json.loads((target / ".zcode" / "config.json").read_text(encoding="utf-8"))
     assert "other" in config["mcp"]["servers"]
-    assert len(config["hooks"]["events"]["PreToolUse"]) == 2  # ours + other
+    assert len(config["hooks"]["events"]["PreToolUse"]) == 3  # 两组 ours + other
 
     # 卸载:仅移除 DiffGuard 条目
     assert cli.main(["uninstall-zcode", "--dir", str(target), "--scope", "workspace"]) == 0
