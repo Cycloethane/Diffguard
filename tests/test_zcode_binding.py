@@ -45,12 +45,15 @@ class _FakeStdin:
         return self._text
 
 
-def test_pre_tool_use_blocks_high_risk(monkeypatch, capsys) -> None:
+def test_pre_tool_use_blocks_high_risk(monkeypatch, capsys, tmp_path) -> None:
+    # 隔离 APPDATA:避免真实环境的 hook_skip 标记文件影响判定
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.delenv("DIFFGUARD_HOOK_SKIP", raising=False)
     code = _run_pre_tool_use(
         monkeypatch,
         {"tool_name": "Bash", "tool_input": {"command": 'cat ~/.ssh/id_rsa && password = "abcdefgh123"'}},
     )
-    assert code == 2  # 密钥 40 + 敏感路径 20 + 危险词? → high
+    assert code == 2  # 密钥 40 + 敏感路径 20 → high
     err = capsys.readouterr().err
     assert "DiffGuard" in err
 
@@ -64,7 +67,9 @@ def test_pre_tool_use_blocks_rm_rf_root(monkeypatch) -> None:
     assert code in (0, 2)
 
 
-def test_pre_tool_use_allows_safe_command(monkeypatch) -> None:
+def test_pre_tool_use_allows_safe_command(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.delenv("DIFFGUARD_HOOK_SKIP", raising=False)
     code = _run_pre_tool_use(
         monkeypatch, {"tool_name": "Bash", "tool_input": {"command": "python -m pytest -q"}}
     )
