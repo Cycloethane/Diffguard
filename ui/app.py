@@ -543,7 +543,7 @@ class DiffGuardApp(ctk.CTk):
     # ------------------------------------------------------------------
     def _check_updates_background(self) -> None:
         """后台线程检查最新版本，发现新版则提示（失败静默）。"""
-        repo: str = "anomalyco/DiffGuard"
+        repo: str = "Cycloethane/Diffguard"
         current: str = "1.0.0"
 
         def _check() -> None:
