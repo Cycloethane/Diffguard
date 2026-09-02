@@ -22,7 +22,7 @@ DiffGuard 是一款面向开发者的**开源**本地桌面工具,用于**审查
 | 历史记录 | 审查记录与权限审批记录分表持久化到 SQLite,支持搜索、风险过滤、回看与改决策 |
 | 导出报告 | 一键将审查结果导出为 Markdown / HTML / 纯文本 |
 | 快捷键 | Ctrl+V 载入 · Ctrl+Enter 审查 · Ctrl+S 保存 · Ctrl+E 导出 |
-| 强调色 | 界面主色支持 蓝 / 绿 / 紫 / 橙 四套方案 |
+| 强调色 | 界面主色支持 墨蓝 / 雾蓝 / 青蓝 / 蓝紫 / 暖粉 五套方案(取自吉祥物色板) |
 | 前台模式 | 迷你悬浮窗,把当前 diff 的风险状态常驻显示在最前 |
 
 ## 快速上手
@@ -148,8 +148,10 @@ python main.py                # 启动应用
 
 ```powershell
 pip install pyinstaller
-pyinstaller --noconfirm --onedir --windowed --name DiffGuard --icon app.ico --collect-all customtkinter --collect-submodules uiautomation main.py
+pyinstaller --noconfirm --onedir --windowed --name DiffGuard --icon app.ico --collect-all customtkinter --collect-submodules uiautomation --add-data "assets;assets" main.py
 ```
+
+界面素材(背景立绘 / 吉祥物 / 图标)集中在 `assets/`,构建时以 `--add-data "assets;assets"` 一并打包。
 
 ## 免责声明
 

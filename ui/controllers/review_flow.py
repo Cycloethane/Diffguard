@@ -210,13 +210,21 @@ class ReviewFlow:
             self._populate_file_list(self.current_files)
 
     def apply_accent(self, primary: str, hover: str) -> None:
-        """强调色切换后刷新引导卡按钮配色。"""
+        """强调色切换后刷新引导卡按钮配色(递归查找嵌套按钮)。"""
         if self._guide is None:
             return
+
+        def _walk(widget: Any) -> None:
+            try:
+                for child in widget.winfo_children():
+                    if isinstance(child, ctk.CTkButton):
+                        child.configure(fg_color=primary, hover_color=hover)
+                    _walk(child)
+            except Exception:
+                pass
+
         try:
-            for child in self._guide.winfo_children():
-                if isinstance(child, ctk.CTkButton):
-                    child.configure(fg_color=primary, hover_color=hover)
+            _walk(self._guide)
         except Exception:
             pass
 

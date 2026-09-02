@@ -11,6 +11,7 @@
 _ACCENTS: dict[str, tuple[str, str]] = {
     "blue": ("#183048", "#2A4A68"),       # 墨蓝
     "steel": ("#607890", "#7890A8"),      # 雾蓝
+    "cyan": ("#3A8FB5", "#57A5C6"),       # 青蓝(吉祥物领结/发梢)
     "violet": ("#9090C0", "#A8A8D8"),     # 蓝紫
     "pink": ("#D89090", "#E0A8A8"),       # 暖粉
 }
@@ -19,6 +20,7 @@ _ACCENTS: dict[str, tuple[str, str]] = {
 _ACCENTS_LIGHT: dict[str, tuple[str, str]] = {
     "blue": ("#183048", "#2A4A68"),
     "steel": ("#4A6078", "#607890"),
+    "cyan": ("#2C7699", "#3A8FB5"),
     "violet": ("#7A7AA8", "#9090C0"),
     "pink": ("#C07878", "#D89090"),
 }

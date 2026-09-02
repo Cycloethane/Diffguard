@@ -216,6 +216,7 @@ class DiffGuardApp(ctk.CTk):
 
             cands: list[str] = []
             cwd = Path.cwd()
+            repo_root = Path(__file__).resolve().parent.parent
             exe_dir = Path(sys.executable).resolve().parent
             meipass = getattr(sys, "_MEIPASS", None)
             if meipass:
@@ -225,6 +226,7 @@ class DiffGuardApp(ctk.CTk):
                 cands.append(str(exe_dir / n))
                 cands.append(str(exe_dir / "_internal" / n))
                 cands.append(str(cwd / n))
+                cands.append(str(repo_root / n))
             for c in cands:
                 if Path(c).is_file():
                     return c
@@ -233,7 +235,16 @@ class DiffGuardApp(ctk.CTk):
         return None
 
     def _set_window_icon(self) -> None:
-        """设置主窗口图标（任务栏/标题栏）：优先 app.ico。"""
+        """设置主窗口图标（任务栏/标题栏）：优先 PNG 素材图标，回退 app.ico。"""
+        png = self._find_icon("assets/icon_512.png", "icon_512.png")
+        if png:
+            try:
+                import tkinter as tk
+
+                self.iconphoto(True, tk.PhotoImage(file=png))
+                return
+            except Exception:
+                pass
         ico = self._find_icon("app.ico", "tray.ico")
         if ico:
             try:

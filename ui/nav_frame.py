@@ -113,6 +113,30 @@ class NavFrame(ctk.CTkFrame):
         # 底部弹性占位（用于底部对齐的额外项）
         self.grid_rowconfigure(len(self.items) + 1, weight=1)
 
+        # 底部吉祥物头像（点击弹出关于）
+        try:
+            from pathlib import Path
+
+            from PIL import Image
+
+            mascot_path = Path(__file__).resolve().parent.parent / "assets" / "mascot_nav.png"
+            if mascot_path.is_file():
+                pil = Image.open(mascot_path)
+                self._mascot_img = ctk.CTkImage(light_image=pil, size=pil.size)
+                self._mascot = ctk.CTkLabel(self, text="", image=self._mascot_img, cursor="hand2")
+                self._mascot.grid(row=len(self.items) + 2, column=0, pady=(0, 10))
+                try:
+                    from ui.widgets import bind_tooltip as _bind
+
+                    _bind(self._mascot, "DiffGuard 守门人 · 点我看看")
+                except Exception:
+                    pass
+                self._mascot.bind("<Button-1>", lambda _e: self._show_about())
+        except Exception as exc:
+            from loguru import logger
+
+            logger.debug("导航吉祥物加载失败: {}", exc)
+
     def select(self, key: Optional[str], animate: bool = True, notify: bool = True) -> None:
         """选中某项：更新高亮与指示条位置。"""
         if key is None or key not in self._buttons:
@@ -163,3 +187,57 @@ class NavFrame(ctk.CTkFrame):
         else:
             badge.configure(text=str(count) if count <= 99 else "99+")
             badge.place(relx=1.0, x=2, y=-2, anchor="ne")
+
+    def _show_about(self) -> None:
+        """点击吉祥物：弹出关于弹窗（版本/定位/口号）。"""
+        from ui.theme import text_color
+
+        try:
+            dlg = ctk.CTkToplevel(self)
+            dlg.title("关于 DiffGuard")
+            dlg.geometry("360x300")
+            dlg.attributes("-topmost", True)
+            dlg.resizable(False, False)
+            dlg.grid_columnconfigure(0, weight=1)
+
+            # 头像
+            avatar = None
+            try:
+                from pathlib import Path
+
+                from PIL import Image as _Img
+
+                p = Path(__file__).resolve().parent.parent / "assets" / "mascot_nav.png"
+                if p.is_file():
+                    pil = _Img.open(p)
+                    avatar = ctk.CTkImage(light_image=pil, size=(72, 67))
+            except Exception:
+                avatar = None
+            ctk.CTkLabel(
+                dlg, text="" if avatar else "◆",
+                image=avatar if avatar else None,
+            ).grid(row=0, column=0, pady=(26, 4))
+            ctk.CTkLabel(
+                dlg, text="DiffGuard",
+                font=ctk.CTkFont(size=22, weight="bold"),
+                text_color=text_color(self.light),
+            ).grid(row=1, column=0, pady=(0, 2))
+            ctk.CTkLabel(
+                dlg, text="你的 AI 编程守门人 · v0.3.0",
+                font=ctk.CTkFont(size=13), text_color=text_muted(self.light),
+            ).grid(row=2, column=0, pady=(0, 2))
+            ctk.CTkLabel(
+                dlg, text="diff 审查 · 权限监控 · 决策助手",
+                font=ctk.CTkFont(size=12), text_color=text_muted(self.light),
+            ).grid(row=3, column=0, pady=(2, 14))
+            ctk.CTkButton(
+                dlg, text="知道啦", width=110, height=32,
+                fg_color=frost_hi(self.light), hover_color=frost_hi(self.light),
+                text_color=text_color(self.light),
+                command=dlg.destroy,
+            ).grid(row=4, column=0, pady=(4, 18))
+            dlg.after(60, dlg.lift)
+        except Exception as exc:
+            from loguru import logger
+
+            logger.debug("打开关于弹窗失败: {}", exc)
