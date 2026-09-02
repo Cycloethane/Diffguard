@@ -13,6 +13,10 @@
     python -m bridge.cli status                   当前状态
     python -m bridge.cli mcp                      启动 MCP stdio server
     python -m bridge.cli install-git-hook --dir . 安装 pre-commit 审查钩子
+    python -m bridge.cli install-zcode --dir . --scope workspace
+                                        把 DiffGuard 注册进 ZCode（MCP+hooks+skill+命令）
+    python -m bridge.cli uninstall-zcode --dir . --scope workspace
+                                        移除 ZCode 集成
 
 零第三方依赖（仅标准库 + 项目自身模块）。
 """
@@ -195,6 +199,228 @@ def cmd_install_git_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+# ----------------------------------------------------------------------
+# ZCode 集成安装器
+# ----------------------------------------------------------------------
+_PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ZCODE_PLUGIN_DIR: str = os.path.join(_PROJECT_ROOT, "zcode")
+_BOOTSTRAP: str = os.path.join(_ZCODE_PLUGIN_DIR, "bootstrap.py")
+_SKILL_SRC: str = os.path.join(_ZCODE_PLUGIN_DIR, "skills", "diffguard")
+_COMMANDS_SRC: str = os.path.join(_ZCODE_PLUGIN_DIR, "commands", "diffguard")
+
+# 钩子条目里用于识别"这是 DiffGuard 安装的"的标记
+_OUR_MARKER: str = "bootstrap.py"
+
+
+def _zcode_paths(scope: str, target_dir: str) -> dict:
+    """返回指定作用域下各配置/资源路径。"""
+    if scope == "user":
+        home = os.path.expanduser("~")
+        return {
+            "config": os.path.join(home, ".zcode", "cli", "config.json"),
+            "skills_dir": os.path.join(home, ".zcode", "skills"),
+            "commands_dir": os.path.join(home, ".zcode", "commands"),
+        }
+    zcode_dir = os.path.join(target_dir, ".zcode")
+    return {
+        "config": os.path.join(zcode_dir, "config.json"),
+        "skills_dir": os.path.join(zcode_dir, "skills"),
+        "commands_dir": os.path.join(zcode_dir, "commands"),
+    }
+
+
+def _read_json_file(path: str) -> dict:
+    try:
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {}
+
+
+def _write_json_file(path: str, data: dict) -> bool:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except OSError as exc:
+        print(f"[错误] 写入 {path} 失败: {exc}")
+        return False
+
+
+def _strip_diffguard_entries(config: dict) -> None:
+    """移除 config 中 DiffGuard 安装的 MCP server 与 hooks 条目。"""
+    servers = (config.get("mcp") or {}).get("servers")
+    if isinstance(servers, dict):
+        servers.pop("diffguard", None)
+
+    def _clean_event(groups) -> None:
+        kept: list = []
+        for group in groups or []:
+            if not isinstance(group, dict):
+                continue
+            hooks = group.get("hooks")
+            if isinstance(hooks, list) and hooks:
+                remaining = [
+                    h for h in hooks
+                    if not isinstance(h, dict)
+                    or _OUR_MARKER not in json.dumps(h, ensure_ascii=False)
+                ]
+                if len(remaining) != len(hooks):
+                    # 移除过 DiffGuard 条目;清空后整个组一并移除(避免残留空壳)
+                    if remaining:
+                        group["hooks"] = remaining
+                        kept.append(group)
+                    continue
+            kept.append(group)
+
+        if isinstance(groups, list):
+            groups[:] = kept
+
+    events = (config.get("hooks") or {}).get("events")
+    if isinstance(events, dict):
+        for groups in events.values():
+            _clean_event(groups)
+
+
+def _add_diffguard_entries(config: dict, python_exe: str, cwd_dir: str) -> None:
+    """向 config 注入 diffguard MCP server 与两个钩子(幂等)。"""
+    _strip_diffguard_entries(config)
+
+    mcp = config.setdefault("mcp", {})
+    servers = mcp.setdefault("servers", {})
+    servers["diffguard"] = {
+        "type": "stdio",
+        "command": python_exe,
+        "args": [_BOOTSTRAP, "mcp"],
+        "cwd": cwd_dir,
+    }
+
+    hooks = config.setdefault("hooks", {})
+    hooks["enabled"] = True
+    events = hooks.setdefault("events", {})
+    events.setdefault("PreToolUse", []).append(
+        {
+            "matcher": "Bash|Write|Edit|ApplyPatch",
+            "hooks": [
+                {
+                    "type": "process",
+                    "command": python_exe,
+                    "args": [_BOOTSTRAP, "pre_tool_use"],
+                    "timeoutMs": 15000,
+                    "statusMessage": "DiffGuard 风险扫描",
+                }
+            ],
+        }
+    )
+    events.setdefault("PermissionRequest", []).append(
+        {
+            "hooks": [
+                {
+                    "type": "process",
+                    "command": python_exe,
+                    "args": [_BOOTSTRAP, "permission_request"],
+                    "timeoutMs": 10000,
+                    "statusMessage": "DiffGuard 权限审计",
+                }
+            ],
+        }
+    )
+
+
+def _copy_tree(src: str, dst: str) -> bool:
+    """复制目录树(覆盖目标)。"""
+    if not os.path.isdir(src):
+        print(f"[错误] 缺少插件资源目录: {src}")
+        return False
+    try:
+        if os.path.isdir(dst):
+            import shutil
+
+            shutil.rmtree(dst)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        import shutil
+
+        shutil.copytree(src, dst)
+        return True
+    except OSError as exc:
+        print(f"[错误] 复制 {src} -> {dst} 失败: {exc}")
+        return False
+
+
+def _remove_tree(path: str) -> None:
+    try:
+        if os.path.isdir(path):
+            import shutil
+
+            shutil.rmtree(path)
+    except OSError:
+        pass
+
+
+def _write_source_marker() -> None:
+    """写入源码位置标记,供 zcode/bootstrap.py 在插件缓存模式下定位根目录。
+
+    位置与 bootstrap.py 的读取端一致(%APPDATA%/DiffGuard/source_path.txt)。
+    """
+    try:
+        base = os.path.join(os.environ.get("APPDATA", ""), "DiffGuard")
+        if not base:
+            return
+        os.makedirs(base, exist_ok=True)
+        with open(os.path.join(base, "source_path.txt"), "w", encoding="utf-8") as f:
+            f.write(_PROJECT_ROOT)
+    except OSError as exc:
+        print(f"[警告] 写入源码位置标记失败: {exc}")
+
+
+def cmd_install_zcode(args: argparse.Namespace) -> int:
+    """把 DiffGuard 注册进 ZCode(MCP + hooks + skill + 命令)。"""
+    if not os.path.isfile(_BOOTSTRAP):
+        print(f"[错误] 未找到插件引导脚本: {_BOOTSTRAP}")
+        return 1
+    target_dir = os.path.abspath(args.dir)
+    if args.scope == "workspace" and not os.path.isdir(target_dir):
+        print(f"[错误] 目标目录不存在: {target_dir}")
+        return 1
+
+    paths = _zcode_paths(args.scope, target_dir)
+    config = _read_json_file(paths["config"])
+    _add_diffguard_entries(config, sys.executable, target_dir)
+    if not _write_json_file(paths["config"], config):
+        return 1
+
+    ok_skill = _copy_tree(_SKILL_SRC, os.path.join(paths["skills_dir"], "diffguard"))
+    ok_cmds = _copy_tree(_COMMANDS_SRC, os.path.join(paths["commands_dir"], "diffguard"))
+    if not (ok_skill and ok_cmds):
+        return 1
+    _write_source_marker()
+
+    print(f"已安装 DiffGuard × ZCode 集成（scope={args.scope}）:")
+    print(f"  - MCP server 与 hooks: {paths['config']}")
+    print(f"  - Skill: {os.path.join(paths['skills_dir'], 'diffguard')}")
+    print(f"  - 命令: {os.path.join(paths['commands_dir'], 'diffguard')}（/diffguard:review 等）")
+    print("重启 ZCode 会话后生效。")
+    return 0
+
+
+def cmd_uninstall_zcode(args: argparse.Namespace) -> int:
+    """移除 DiffGuard 的 ZCode 集成条目。"""
+    target_dir = os.path.abspath(args.dir)
+    paths = _zcode_paths(args.scope, target_dir)
+    config = _read_json_file(paths["config"])
+    _strip_diffguard_entries(config)
+    if not _write_json_file(paths["config"], config):
+        return 1
+    _remove_tree(os.path.join(paths["skills_dir"], "diffguard"))
+    _remove_tree(os.path.join(paths["commands_dir"], "diffguard"))
+    print(f"已卸载 DiffGuard × ZCode 集成（scope={args.scope}）。")
+    return 0
+
+
 _GIT_HOOK_TEMPLATE = r'''#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # DiffGuard pre-commit review hook (auto-installed).
@@ -285,6 +511,20 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("install-git-hook", help="安装 pre-commit 审查钩子")
     p.add_argument("--dir", default=".", help="git 仓库根目录")
     p.set_defaults(func=cmd_install_git_hook)
+
+    p = sub.add_parser(
+        "install-zcode",
+        help="把 DiffGuard 注册进 ZCode（MCP + hooks + skill + 命令）",
+    )
+    p.add_argument("--dir", default=".", help="目标仓库根目录（workspace 作用域）")
+    p.add_argument("--scope", choices=["workspace", "user"], default="workspace",
+                   help="workspace=写入目标仓库 .zcode/；user=写入 ~/.zcode/（全局）")
+    p.set_defaults(func=cmd_install_zcode)
+
+    p = sub.add_parser("uninstall-zcode", help="移除 DiffGuard 的 ZCode 集成")
+    p.add_argument("--dir", default=".", help="目标仓库根目录（workspace 作用域）")
+    p.add_argument("--scope", choices=["workspace", "user"], default="workspace")
+    p.set_defaults(func=cmd_uninstall_zcode)
 
     return parser
 

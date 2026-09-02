@@ -1,0 +1,31 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|ApplyPatch",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python",
+            "args": ["${ZCODE_PLUGIN_ROOT}/bootstrap.py", "pre_tool_use"],
+            "timeoutMs": 15000,
+            "statusMessage": "DiffGuard 风险扫描"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "python",
+            "args": ["${ZCODE_PLUGIN_ROOT}/bootstrap.py", "permission_request"],
+            "timeoutMs": 10000,
+            "statusMessage": "DiffGuard 权限审计"
+          }
+        ]
+      }
+    ]
+  }
+}

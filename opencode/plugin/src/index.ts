@@ -1,17 +1,31 @@
+import { dirname, resolve } from "path"
 import type { Plugin } from "opencode"
+
+/**
+ * 定位 DiffGuard 源码根目录：优先环境变量 DIFFGUARD_HOME，
+ * 否则从本插件位置回退（插件位于 <DiffGuard 仓库>/opencode/plugin）。
+ */
+function diffguardRoot(): string {
+  const env = process.env.DIFFGUARD_HOME
+  if (env && env.trim()) return env
+  // dist/index.js -> plugin -> opencode -> 仓库根
+  return resolve(dirname(__dirname), "..", "..")
+}
 
 /**
  * 调用 DiffGuard 的本地风险扫描。
  * 通过桥接 CLI 或 MCP 均可；这里用最轻量的方式：调用 CLI 的 scan。
+ * 参数走数组形式（不经 shell 拼接），避免命令注入。
  * 返回 { score, level, label, findings }。
  */
 async function diffguardScan(text: string): Promise<any> {
-  const { execSync } = await import("child_process")
+  const { execFileSync } = await import("child_process")
   try {
-    const out = execSync(
-      `python -m bridge.cli scan ${JSON.stringify(text)}`,
+    const out = execFileSync(
+      "python",
+      ["-m", "bridge.cli", "scan", text],
       {
-        cwd: "D:/SP_DiffGuard",
+        cwd: diffguardRoot(),
         encoding: "utf-8",
         timeout: 15000,
         windowsHide: true,
@@ -29,12 +43,13 @@ async function diffguardScan(text: string): Promise<any> {
  * 把一段 diff 提交给 DiffGuard 审查并返回结论（调用 CLI review）。
  */
 async function diffguardReview(diffText: string): Promise<string | null> {
-  const { execSync } = await import("child_process")
+  const { execFileSync } = await import("child_process")
   try {
-    const out = execSync(
-      `python -m bridge.cli review --diff ${JSON.stringify(diffText)}`,
+    const out = execFileSync(
+      "python",
+      ["-m", "bridge.cli", "review", "--diff", diffText],
       {
-        cwd: "D:/SP_DiffGuard",
+        cwd: diffguardRoot(),
         encoding: "utf-8",
         timeout: 120000,
         windowsHide: true,

@@ -1,0 +1,10 @@
+{
+  "name": "diffguard",
+  "plugins": [
+    {
+      "name": "diffguard-zcode",
+      "source": "zcode",
+      "description": "DiffGuard × ZCode：git diff AI 审查、本地风险扫描（PreToolUse 阻断高危命令）、权限审计与决策闭环。"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "mcp": {
+    "servers": {
+      "diffguard": {
+        "type": "stdio",
+        "command": "python",
+        "args": [
+          "${ZCODE_PROJECT_DIR}/zcode/bootstrap.py",
+          "mcp"
+        ],
+        "cwd": "${ZCODE_PROJECT_DIR}"
+      }
+    }
+  },
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "PreToolUse": [
+        {
+          "matcher": "Bash|Write|Edit|ApplyPatch",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "python",
+              "enabled": true,
+              "statusMessage": "DiffGuard 风险扫描",
+              "args": [
+                "${ZCODE_PROJECT_DIR}/zcode/bootstrap.py",
+                "pre_tool_use"
+              ],
+              "timeoutMs": 15000
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "process",
+              "command": "python",
+              "enabled": true,
+              "statusMessage": "DiffGuard 权限审计",
+              "args": [
+                "${ZCODE_PROJECT_DIR}/zcode/bootstrap.py",
+                "permission_request"
+              ],
+              "timeoutMs": 10000
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

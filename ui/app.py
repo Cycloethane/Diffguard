@@ -185,6 +185,17 @@ class DiffGuardApp(ctk.CTk):
         self.after(200, self._poll_tray_queue)
         self.after(300, self._poll_decision_queue)
         self.after(400, self._poll_decision_stream)
+        # 状态快照供 Agent 桥接读取(status.json)
+        try:
+            bridge_store.write_status(
+                running=True,
+                model=config.model,
+                decision_assistant=config.decision_assistant,
+                permission_monitor=config.permission_monitor,
+                auto_clipboard=config.auto_clipboard,
+            )
+        except Exception as exc:
+            logger.debug("写入状态快照失败: {}", exc)
 
     # ------------------------------------------------------------------
     # UI 构建
@@ -1723,6 +1734,10 @@ class DiffGuardApp(ctk.CTk):
     def _quit_app(self) -> None:
         """真正退出：停止监听线程、销毁浮窗与托盘图标。"""
         logger.info("退出 DiffGuard")
+        try:
+            bridge_store.write_status(running=False)
+        except Exception as exc:
+            logger.debug("写入退出状态快照失败: {}", exc)
         self.stop_clipboard_watching()
         if self._permission_watcher is not None:
             try:

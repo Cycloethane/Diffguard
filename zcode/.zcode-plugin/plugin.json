@@ -1,0 +1,16 @@
+{
+  "name": "diffguard-zcode",
+  "version": "0.3.0",
+  "description": "DiffGuard × ZCode：git diff AI 审查、本地风险扫描（PreToolUse 阻断高危命令）、权限审计与决策闭环。",
+  "skills": "skills",
+  "commands": "commands",
+  "hooks": "hooks/hooks.json",
+  "mcpServers": {
+    "diffguard": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${ZCODE_PLUGIN_ROOT}/bootstrap.py", "mcp"],
+      "cwd": "${ZCODE_PROJECT_DIR}"
+    }
+  }
+}

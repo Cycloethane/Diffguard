@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""DiffGuard MCP Server：向 AI Agent（OpenCode）暴露审查/权限/决策能力。
+"""DiffGuard MCP Server：向 AI Agent（ZCode / OpenCode 等）暴露审查/权限/决策能力。
 
 实现方式：
     - 零第三方依赖的最小 MCP 服务器：基于 JSON-RPC 2.0，stdio 传输。
     - 协议子集：initialize / tools/list / tools/call / notifications/initialized。
-    - 可被 OpenCode（opencode.json 的 mcp 段）以 command 方式拉起：
-        "mcp": {"diffguard": {"type": "stdio", "command": ["python", "-m", "bridge.mcp_server"]}}
+    - 可在 Agent 配置中以 command 方式拉起（ZCode 经 zcode/ 插件或
+      install-zcode 注册；OpenCode 在 opencode.json 的 mcp 段注册）。
     也可手动运行：python -m bridge.mcp_server
 
 暴露工具：
@@ -36,12 +36,12 @@ from loguru import logger
 from bridge import store
 from core.risk_score import score_text  # type: ignore
 from models.config import load_config
-from models.history import get_by_id as get_review_by_id
 from models.history import get_recent as get_recent_reviews
 from models.permission_history import get_recent_permissions
 from models.decision_history import get_recent_decisions, decision_stats
 
 _PROTOCOL_VERSION: str = "2024-11-05"
+_SERVER_VERSION: str = "0.3.0"
 
 
 # ----------------------------------------------------------------------
@@ -360,7 +360,7 @@ def _handle_request(msg: dict) -> Optional[str]:
             {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "diffguard-mcp", "version": "0.2.0"},
+                "serverInfo": {"name": "diffguard-mcp", "version": _SERVER_VERSION},
             },
         )
     if method == "notifications/initialized":

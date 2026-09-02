@@ -20,3 +20,15 @@ def bridge_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     target.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(store, "bridge_dir", lambda: target)
     return target
+
+
+@pytest.fixture
+def db_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """把数据库文件重定向到临时目录并重置 engine 缓存。"""
+    from models import db
+
+    target = tmp_path / "diffguard.db"
+    monkeypatch.setattr(db, "db_path", lambda: target)
+    db.reset_engine()
+    yield target
+    db.reset_engine()
