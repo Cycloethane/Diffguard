@@ -3,7 +3,7 @@
     "diffguard": {
       "type": "stdio",
       "command": ["python", "-m", "bridge.mcp_server"],
-      "cwd": "D:/SP_DiffGuard"
+      "cwd": "<DiffGuard 仓库路径>"
     }
   }
 }

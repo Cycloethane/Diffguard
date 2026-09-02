@@ -20,7 +20,7 @@ DiffGuard 是运行在你本机 Windows 上的桌面工具。它提供：
     "diffguard": {
       "type": "stdio",
       "command": ["python", "-m", "bridge.mcp_server"],
-      "cwd": "D:/SP_DiffGuard"
+      "cwd": "<DiffGuard 仓库路径>"
     }
   }
 }

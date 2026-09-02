@@ -6,7 +6,7 @@
     "diffguard": {
       "type": "stdio",
       "command": ["python", "-m", "bridge.mcp_server"],
-      "cwd": "D:/SP_DiffGuard"
+      "cwd": "<DiffGuard 仓库路径>"
     }
   },
 
@@ -30,6 +30,6 @@
   },
 
   "skills": {
-    "diffguard": "D:/SP_DiffGuard/opencode/SKILL.md"
+    "diffguard": "<DiffGuard 仓库路径>/opencode/SKILL.md"
   }
 }

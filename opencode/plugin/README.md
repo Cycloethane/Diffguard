@@ -24,7 +24,7 @@ npm run build   # 生成 dist/index.js
 
 ## 配置前提
 
-- DiffGuard 源码在 `D:/SP_DiffGuard`（如不同路径，请修改 `src/index.ts` 中的 `cwd`）。
+- 插件通过 `DIFFGUARD_HOME` 环境变量定位 DiffGuard 源码;未设置时按插件相对位置回退(插件位于 <DiffGuard 仓库>/opencode/plugin)。
 - 打包版可改用 `DiffGuard.exe` 的 CLI 入口或 MCP。
 
 ## 注意
