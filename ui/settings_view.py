@@ -321,6 +321,12 @@ class SettingsDialog(ctk.CTkToplevel):
         self.agent_mcp_switch.grid(row=r, column=0, sticky="w", pady=4)
         r += 1
 
+        self.permission_advice_switch: ctk.CTkSwitch = ctk.CTkSwitch(
+            scroll, text="启用权限顾问 (ZCode 授权请求中高风险时弹 AI 分析)"
+        )
+        self.permission_advice_switch.grid(row=r, column=0, sticky="w", pady=4)
+        r += 1
+
         # ---------------- 其它 ----------------
         ctk.CTkLabel(
             scroll, text="其它", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
@@ -425,6 +431,7 @@ class SettingsDialog(ctk.CTkToplevel):
         (self.decision_overlay_switch.select() if self._config.decision_show_overlay else self.decision_overlay_switch.deselect())
         (self.agent_bridge_switch.select() if getattr(self._config, "agent_bridge", True) else self.agent_bridge_switch.deselect())
         (self.agent_mcp_switch.select() if getattr(self._config, "agent_mcp", True) else self.agent_mcp_switch.deselect())
+        (self.permission_advice_switch.select() if getattr(self._config, "permission_advice", True) else self.permission_advice_switch.deselect())
 
     def _on_save_clicked(self) -> None:
         """收集界面值、保存配置并关闭窗口。"""
@@ -456,6 +463,7 @@ class SettingsDialog(ctk.CTkToplevel):
             decision_show_overlay=bool(self.decision_overlay_switch.get()),
             agent_bridge=bool(self.agent_bridge_switch.get()),
             agent_mcp=bool(self.agent_mcp_switch.get()),
+            permission_advice=bool(self.permission_advice_switch.get()),
             animations=bool(self.animations_switch.get()),
         )
         try:

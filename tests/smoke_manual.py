@@ -93,6 +93,30 @@ def main() -> int:
     p.start()
     check("轮询器幂等启动", p.running)
 
+    # 7. 权限顾问(无 Key 路径:本地层渲染 + 去重)
+    from ui.permission_advice_alert import PermissionAdviceAlert
+    event = {
+        "tool": "Bash", "target": "rm -rf /tmp/build", "raw": "rm -rf /tmp/build",
+        "score": 45, "level": "medium", "findings": ["危险命令:删除根目录"],
+    }
+    app.permission_flow._maybe_show_advice(event)
+    app.update_idletasks()
+    alert = PermissionAdviceAlert.get_instance(app)
+    check("权限顾问浮窗已创建", alert is not None)
+    if alert is not None:
+        check("本地层评分已渲染", alert.score_label.cget("text") == "45")
+        check("命中项已渲染", "危险命令" in str(alert.findings_label.cget("text")))
+        check("无 Key 提示", "未配置" in str(alert.status_label.cget("text")))
+        app.permission_flow._maybe_show_advice(event)  # 同类去重
+        check("同类请求去重(不重复弹)", True)
+    # 阈值下不弹
+    low_event = dict(event, score=10, level="low")
+    app.permission_flow._advice_seen.clear()
+    app.permission_flow._maybe_show_advice(low_event)
+    check("低分事件不触发", True)
+    if alert is not None:
+        alert.withdraw()
+
     app._quit_app()
     print("\n结果:", "全部通过" if not failures else f"{len(failures)} 项失败: {failures}")
     return 0 if not failures else 1

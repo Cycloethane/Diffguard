@@ -187,10 +187,12 @@ def write_permission_event(
     score: int,
     level: str,
     findings: list,
+    raw: str = "",
 ) -> Optional[dict]:
     """写入一条最近的权限事件（seq 递增，保留最近 20 条环形缓存）。
 
-    供 DiffGuard 前台轮询：高风险弹托盘提醒、小窗权限栏展示。
+    供 DiffGuard 前台轮询：高风险弹托盘提醒、小窗权限栏展示；
+    raw 为工具入参原文（截断），供权限顾问 AI 分析使用。
     """
     path = _path("permission_events.json")
     data = _read_json(path, {"seq": 0, "latest": None, "recent": []})
@@ -206,6 +208,7 @@ def write_permission_event(
         "score": int(score),
         "level": level,
         "findings": [str(f) for f in findings][:8],
+        "raw": str(raw or "")[:2000],
     }
     data["seq"] = seq
     data["latest"] = event

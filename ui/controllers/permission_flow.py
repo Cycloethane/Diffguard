@@ -5,6 +5,7 @@
 从 app.py 抽出;持久化与 UIA 回写沿用原有 models/core 接口。
 """
 
+import hashlib
 import queue
 import threading
 import time
@@ -12,15 +13,20 @@ from typing import Any, Optional
 
 from loguru import logger
 
+from core.permission_advisor import advise_permission
 from core.permission_risk import risk_level as permission_risk_level
+from models.config import is_configured
 from models.permission_history import save_permission, update_permission_decision
 from ui.notify import tray_notify
+from ui.permission_advice_alert import PermissionAdviceAlert
 from ui.permission_alert import PermissionAlert
 from ui.poller import QueuePoller
 
 # 桥接权限事件轮询间隔(秒)与小窗展示保留时长(秒)
 _BRIDGE_POLL_INTERVAL_MS: int = 1500
 _OVERLAY_EVENT_TTL: float = 15.0
+# 权限顾问:同类请求(tool+raw 哈希)去重窗口(秒)
+_ADVICE_DEDUPE_TTL: float = 600.0
 
 
 class PermissionFlow:
@@ -39,6 +45,13 @@ class PermissionFlow:
         self.recent_bridge_event: Optional[dict] = None
         self._last_bridge_seq: int = 0
         self._bridge_after_id: Optional[str] = None
+        # 权限顾问(AI 分析流)
+        self._advice_queue: "queue.Queue[Optional[str]]" = queue.Queue()
+        self._advice_poller = QueuePoller(
+            app, self._advice_queue, self._apply_advice_line,
+            interval_ms=400, label="permission-advice",
+        )
+        self._advice_seen: dict[str, float] = {}  # 去重: hash -> time
 
     # ------------------------------------------------------------------
     # 入口(watcher 回调,后台线程执行)
@@ -52,8 +65,9 @@ class PermissionFlow:
         self._poller.start()
 
     def stop(self) -> None:
-        """停止权限队列轮询。"""
+        """停止权限队列轮询与权限顾问流轮询。"""
         self._poller.stop()
+        self._advice_poller.stop()
 
     def _refresh_online_state(self) -> None:
         """每轮刷新 UIA 在线状态(供状态栏指示读取)。"""
@@ -126,6 +140,66 @@ class PermissionFlow:
                 ),
                 daemon=True,
             ).start()
+
+        # 权限顾问:中高风险且开关开启且未去重 → 弹 AI 分析浮窗
+        try:
+            self._maybe_show_advice(event)
+        except Exception as exc:
+            logger.debug("权限顾问触发失败: {}", exc)
+
+    # ------------------------------------------------------------------
+    # 权限顾问(是什么/后果/建议,仅提示不代答)
+    # ------------------------------------------------------------------
+    def _maybe_show_advice(self, event: dict) -> None:
+        """按配置与阈值弹权限顾问浮窗,并按需启动 AI 分析流。"""
+        config = self.app.config
+        if not getattr(config, "permission_advice", True):
+            return
+        score = int(event.get("score", 0) or 0)
+        threshold = int(getattr(config, "permission_advice_threshold", 20) or 20)
+        if score < threshold:
+            return
+        # 去重:同类请求(tool+raw)在窗口期内不重复弹
+        key_raw = f"{event.get('tool', '')}|{event.get('raw', '') or event.get('target', '')}"
+        key = hashlib.md5(key_raw.encode("utf-8", errors="ignore")).hexdigest()
+        now = time.time()
+        self._advice_seen = {k: v for k, v in self._advice_seen.items() if now - v < _ADVICE_DEDUPE_TTL}
+        if key in self._advice_seen:
+            return
+        self._advice_seen[key] = now
+
+        alert = PermissionAdviceAlert.ensure_instance(self.app)
+        ai_enabled = is_configured(config)
+        alert.show_event(event, ai_enabled=ai_enabled)
+
+        if not ai_enabled:
+            return
+
+        # 后台线程流式分析,主线程轮询填充浮窗
+        config_ref = config
+
+        def _run() -> None:
+            try:
+                for line in advise_permission(event, config_ref):
+                    self._advice_queue.put(line)
+            except Exception as exc:  # 兜底:不让线程崩溃
+                logger.exception("权限分析线程异常: {}", exc)
+                self._advice_queue.put("#ERROR# 分析线程异常，请查看日志。")
+            finally:
+                self._advice_queue.put(None)  # 结束哨兵
+
+        self._advice_poller.start()  # 幂等
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _apply_advice_line(self, line: Optional[str]) -> None:
+        """消费一行分析输出;None 为结束哨兵。"""
+        alert = PermissionAdviceAlert.get_instance(self.app)
+        if alert is None:
+            return
+        if line is None:
+            alert.set_done()  # 仅有 WHAT/CONSEQUENCE 时也标记完成
+            return
+        alert.apply_line(line)
 
     def overlay_permission(self) -> Optional[dict]:
         """供前台小窗展示的最近权限事件(超时自动消失)。"""

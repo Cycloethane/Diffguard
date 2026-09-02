@@ -137,7 +137,8 @@ def permission_request_main() -> int:
         prompt.breakdown = [str(f) for f in res.get("findings", [])]
         save_permission(prompt)
 
-        # 桥接事件:供 DiffGuard 前台轮询(高风险托盘提醒 + 小窗权限栏)
+        # 桥接事件:供 DiffGuard 前台轮询(高风险托盘提醒 + 小窗权限栏
+        # + 权限顾问 AI 分析,raw 为完整入参原文)
         try:
             from bridge.store import write_permission_event
 
@@ -149,6 +150,7 @@ def permission_request_main() -> int:
                 score=prompt.risk_score,
                 level=str(res.get("level", "low")),
                 findings=prompt.breakdown,
+                raw=_extract_text(tool_name, tool_input),
             )
         except Exception:
             pass

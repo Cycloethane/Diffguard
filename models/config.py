@@ -116,6 +116,8 @@ class Config(BaseSettings):
         decision_max_len: 送入 AI 解析的原始文本长度上限。
         agent_bridge: 是否启用 Agent 决策反馈闭环（用户选择回写供 Agent 参考）。
         agent_mcp: 是否启用 Agent 决策请求通道（MCP/桥接文件提交决策）。
+        permission_advice: 是否启用权限顾问（ZCode 权限请求中高风险时弹 AI 分析浮窗）。
+        permission_advice_threshold: 权限顾问触发阈值（本地评分 ≥ 该值才弹分析）。
         animations: 是否启用界面动画（false 时所有动画立即完成）。
     """
 
@@ -139,6 +141,8 @@ class Config(BaseSettings):
     decision_max_len: int = 4000
     agent_bridge: bool = True
     agent_mcp: bool = True
+    permission_advice: bool = True
+    permission_advice_threshold: int = 20
     animations: bool = True
 
     model_config = SettingsConfigDict(

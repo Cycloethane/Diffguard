@@ -10,6 +10,7 @@
 | PreToolUse 钩子 | Bash / Write / Edit / ApplyPatch 调用前做本地风险扫描,**高危(≥60 分)阻断** |
 | AskUserQuestion 钩子 | Agent 原生询问自动镜像到 DiffGuard 决策浮窗:AI **逐项分析各选项的优点/缺点/风险并给出推荐**,与 ZCode 询问框并行展示;用户选择写入决策反馈 |
 | PermissionRequest 钩子 | 权限请求评分入库 + 写桥接事件;**高风险(≥60)弹托盘提醒**,前台小窗显示"最近权限请求"栏(15 秒自动隐藏) |
+| 权限顾问 | 中高风险(默认 ≥20 分,可配 `permission_advice_threshold`)授权请求弹出 AI 分析浮窗:**这是什么权限 / 允许的后果(含可逆性) / 建议怎么处理**;仅作提示,实际选择仍在 ZCode 弹窗完成 |
 | Skill(`diffguard`) | 教 Agent 在高风险操作前自查、决策先查用户偏好 |
 | 斜杠命令 | `/diffguard:review` `/diffguard:scan` `/diffguard:status` `/diffguard:decide` |
 
